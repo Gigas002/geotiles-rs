@@ -1,0 +1,24 @@
+[package]
+name = "geotiles-rs"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+gdal = { version = "0", features = ["default", "bindgen"] }
+tiff = "0"
+image = "0"
+wgpu = "23"
+# chrono = { version = "0", features = ["serde"] }
+# chrono-tz = "0"
+log = "0"
+# serde = "1"
+# serde_derive = "1"
+# serde_json = "1"
+# serde_with = { version = "3", features = ["json"] }
+# serde_repr = "0"
+tokio = { version = "1", features = ["full"] }
+# url = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+# uuid = { version = "1", features = ["v4", "fast-rng"] }
