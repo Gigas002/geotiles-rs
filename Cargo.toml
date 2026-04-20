@@ -11,5 +11,6 @@ repository = "https://github.com/Gigas002/geotiles-rs"
 homepage = "https://github.com/Gigas002/geotiles-rs"
 
 [workspace.dependencies]
+gdal = "0.19"
 thiserror = "2"
 tracing = "0.1"

@@ -151,6 +151,8 @@ geotiles-rs/
 
 **Policy:** use **two-component** version requirements in `Cargo.toml` (e.g. `0.19`) where practical; exact versions live in **`Cargo.lock`**. Before each release, run `cargo update` and **confirm** each crate still shows activity within ~12 months (crates.io / GitHub). **Do not** depend on unmaintained crates.
 
+**GeoRust ecosystem reference:** [**https://georust.org/**](https://georust.org/) — canonical index of maintained Rust geospatial crates (GDAL bindings, `geo`, `proj`, `geozero`, etc.). Consult this page when evaluating or adding geospatial dependencies.
+
 | Crate                                                               | Role                                                                           | Notes                                                                                                                                                      |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [**gdal**](https://crates.io/crates/gdal)                           | GDAL Dataset, warping, `read_raster`, geotransform, SRS                        | System **libgdal** required; primary geospatial engine                                                                                                     |
@@ -251,6 +253,17 @@ Implement **features**, not **C# types**:
 ## 6. Testing strategy and GeoTIFF fixtures (no Git LFS)
 
 Large GeoTIFFs **cannot** be committed to the repo. **Git LFS is not an option.** Use a **layered** approach so `cargo test` is **fast and offline-friendly by default**, while still allowing **full** validation when assets and network are available.
+
+### 6.0 Test file architecture (mandatory)
+
+**Rule: tests must never live inside source files.** No `#[cfg(test)]` blocks embedded in `.rs` modules.
+
+| Test kind         | Location                                          | Example                                  |
+| ----------------- | ------------------------------------------------- | ---------------------------------------- |
+| **Unit tests**    | Sibling `tests.rs` next to the module under test  | `src/gdal_io/mod.rs` → `src/gdal_io/tests.rs` |
+| **Integration tests** | `libgeotiles/tests/` (one file per concern)   | `tests/gdal_io.rs`                       |
+
+Wire unit test files with `#[cfg(test)] mod tests;` at the bottom of the module — in the **module file**, pointing to the sibling `tests.rs`. The test logic itself lives only in `tests.rs`.
 
 ### 6.1 What always lives in the repo (small)
 
@@ -356,9 +369,9 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 1 — Errors, GDAL bootstrap, and logging foundation
 
-- [ ] `libgeotiles::error`: map `gdal::errors::GdalError` and I/O into `thiserror` variants.
-- [ ] Single module to **open** a dataset and read **size**, **geotransform**, **WKT** projection.
-- [ ] Add **`tracing`** as a dependency; instrument the dataset-open path with `tracing::debug!` / `tracing::info!` spans from the very start — **logging must grow with every subsequent phase**, not be retrofitted at the end. Add `tracing-subscriber` as a **`dev-dependency`** only (for test output); wire it up in integration tests / examples for observability during development.
+- [x] `libgeotiles::error`: map `gdal::errors::GdalError` and I/O into `thiserror` variants.
+- [x] Single module to **open** a dataset and read **size**, **geotransform**, **WKT** projection.
+- [x] Add **`tracing`** as a dependency; instrument the dataset-open path with `tracing::debug!` / `tracing::info!` spans from the very start — **logging must grow with every subsequent phase**, not be retrofitted at the end. Add `tracing-subscriber` as a **`dev-dependency`** only (for test output); wire it up in integration tests / examples for observability during development.
 - **Verify:** **integration test** or **`examples/`** snippet opens a sample `.tif` and asserts dimensions + origin; tracing events are visible when `RUST_LOG=debug` is set.
 
 ### Phase 2 — Coordinates and tile indexing
@@ -486,4 +499,5 @@ Update this file when: workspace layout changes, a phase is completed (checkboxe
 | 2026-04-20 | Library-first release (§1.6, §9.1); CLI + config deferred (§5, Phase 8, §9.2); workspace starts `libgeotiles`-only; §7.0 `-p libgeotiles`; phases renumbered                                                                                                                                                                                                                                                                                                               |
 | 2026-04-21 | §1.1: performance+simplicity and logging-throughout as first-class goals; tile crop in crate stated as mandatory rationale; §1.2: docs.rs handles API docs, tofi placeholder files noted as already copied; §6.6: Benchmarks subsection added (`criterion`, CPU vs GPU, lib comparison); Phase 0: add step to adapt tofi placeholder files; Phase 1: logging-throughout requirement; §9.1 DoD: benchmark baseline criterion                                                |
 | 2026-04-21 | §1.1: chunked/streaming I/O as first-class goal (200 GB+ inputs, configurable `chunk_size` on `GeoTiff`); §1.4 GPU work-split updated (VRAM chunk budget + free before next chunk); §2 layout: `pipeline/chunks.rs`; §3: `memmap2` note refined; §4: new step 4 (chunked read manager), renumbered subsequent steps; Phase 4/5: chunk-aware implementation steps; §6.6: `bench_chunk_size_sweep`; §8: RAM + VRAM exhaustion risks updated; §9.1 DoD: chunked I/O criterion |
+| 2026-04-21 | §3: GeoRust ecosystem reference (georust.org) added; §6.0: mandatory test file architecture rule (no inline tests — unit tests in sibling `tests.rs`, integration tests in `tests/`) |
 | 2026-04-21 | `TileJob` renamed to `GeoTiff` throughout; primary struct lives in `src/geotiff.rs`; API shape: `GeoTiff::open(path)?.zoom(..).chunk_size(..).format(..).output(..).crop()?`; `crop()` is the pipeline execution method; `ResampleBackend` and `TileFormat` unchanged; §1.3 parity row updated; §4 now opens with naming rationale + illustrative snippet; §2 layout updated (`geotiff.rs` added, `gdal_io/` marked internal)                                              |
