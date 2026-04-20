@@ -348,10 +348,10 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 0 — Workspace skeleton
 
-- [ ] Root `Cargo.toml`: `[workspace]` with **`libgeotiles`**; `edition = "2024"`. (**Do not** add **`geotiles`** until the **CLI phase** — §1.6, §5.)
-- [ ] `libgeotiles`: empty `lib.rs`, `error.rs` with one root `Error`.
-- [ ] Relocate **wgpu** (if present) into **`libgeotiles`** as an **optional** dependency behind the **`gpu`** feature only — **not** in workspace `default` features; drop any unused experimental deps from the old single-crate layout.
-- [ ] **Adapt CI / tooling placeholder files** (already copied from [tofi-rs](https://github.com/Gigas002/tofi-rs) into this repo): update **`deny.toml`**, **`.typos.toml`**, **`.github/workflows/`**, and **`.github/dependabot.yml`** for this project — swap crate names to `libgeotiles`, replace any Wayland / display system packages with **`libgdal-dev`** + build tools, remove tofi-specific exceptions, keep matrices and job structure otherwise unchanged (§2.1). Use [**imgvwr**](https://github.com/Gigas002/imgvwr) as the style reference when resolving ambiguities.
+- [x] Root `Cargo.toml`: `[workspace]` with **`libgeotiles`**; `edition = "2024"`. (**Do not** add **`geotiles`** until the **CLI phase** — §1.6, §5.)
+- [x] `libgeotiles`: empty `lib.rs`, `error.rs` with one root `Error`.
+- [x] Relocate **wgpu** (if present) into **`libgeotiles`** as an **optional** dependency behind the **`gpu`** feature only — **not** in workspace `default` features; drop any unused experimental deps from the old single-crate layout.
+- [x] **Adapt CI / tooling placeholder files** (already copied from [tofi-rs](https://github.com/Gigas002/tofi-rs) into this repo): update **`deny.toml`**, **`.typos.toml`**, **`.github/workflows/`**, and **`.github/dependabot.yml`** for this project — swap crate names to `libgeotiles`, replace any Wayland / display system packages with **`libgdal-dev`** + build tools, remove tofi-specific exceptions, keep matrices and job structure otherwise unchanged (§2.1). Use [**imgvwr**](https://github.com/Gigas002/imgvwr) as the style reference when resolving ambiguities.
 - **Verify:** `cargo build --workspace`; when tooling is present, **§7.0** gates (may be partially N/A until features land — see §7.0 notes).
 
 ### Phase 1 — Errors, GDAL bootstrap, and logging foundation
