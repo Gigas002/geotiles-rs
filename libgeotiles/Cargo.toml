@@ -8,7 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 
 [features]
-default = ["png"]
+default = ["png", "geographic", "mercator"]
+geographic = []
+mercator = []
 png = ["dep:image", "image/png"]
 jpeg = ["dep:image", "image/jpeg"]
 webp = ["dep:image", "image/webp"]

@@ -376,9 +376,9 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 2 — Coordinates and tile indexing
 
-- [ ] Implement **Web Mercator** tile math (or **geographic** if you choose 4326 tiles — pick one default and document): resolution at `z`, `(lon, lat)` ↔ pixel, **tile (x, y, z)**.
-- [ ] TMS: optional **Y flip** when writing paths.
-- [ ] Unit tests: known **z/x/y** ↔ bbox corners for a few fixed points.
+- [x] Implement **Web Mercator** tile math (or **geographic** if you choose 4326 tiles — pick one default and document): resolution at `z`, `(lon, lat)` ↔ pixel, **tile (x, y, z)**.
+- [x] TMS: optional **Y flip** when writing paths.
+- [x] Unit tests: known **z/x/y** ↔ bbox corners for a few fixed points.
 - **Verify:** `cargo test -p libgeotiles` for `coords` tests.
 
 ### Phase 3 — Warp / CRS normalization

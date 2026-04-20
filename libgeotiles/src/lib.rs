@@ -1,5 +1,7 @@
 pub mod error;
 #[doc(hidden)]
+pub mod coords;
+#[doc(hidden)]
 pub mod gdal_io;
 
 pub use error::Error;
