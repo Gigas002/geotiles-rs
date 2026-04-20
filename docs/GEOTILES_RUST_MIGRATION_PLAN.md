@@ -383,8 +383,8 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 3 — Warp / CRS normalization
 
-- [ ] Implement **warp to EPSG:3857** (or 4326) using GDAL (`gdal::programs::raster::warp` or equivalent stable API for your `gdal` version).
-- [ ] Expose **working dataset** handle + geotransform after warp.
+- [x] Implement **warp to EPSG:3857** (or 4326) using GDAL (`gdal::programs::raster::warp` or equivalent stable API for your `gdal` version).
+- [x] Expose **working dataset** handle + geotransform after warp.
 - **Verify:** run on a small GeoTIFF; confirm bounds and pixel scale change as expected (log or debug assert).
 
 ### Phase 4 — Single tile read + resize + encode

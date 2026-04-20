@@ -7,4 +7,7 @@ pub enum Error {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("C string contains interior null byte: {0}")]
+    NulByte(#[from] std::ffi::NulError),
 }

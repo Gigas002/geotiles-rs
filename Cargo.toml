@@ -12,5 +12,6 @@ homepage = "https://github.com/Gigas002/geotiles-rs"
 
 [workspace.dependencies]
 gdal = "0.19"
+gdal-sys = "0.12"
 thiserror = "2"
 tracing = "0.1"

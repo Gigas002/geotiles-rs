@@ -172,6 +172,7 @@ name = "libgeotiles"
 version = "0.1.0"
 dependencies = [
  "gdal",
+ "gdal-sys",
  "image",
  "thiserror",
  "tracing",
