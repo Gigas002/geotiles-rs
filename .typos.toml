@@ -1,0 +1,9 @@
+[files]
+extend-exclude = [
+    "target/",
+    "target/geotiles-test-data/",
+    "Cargo.lock",
+]
+
+[default]
+extend-ignore-identifiers-re = []
