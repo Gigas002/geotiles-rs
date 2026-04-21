@@ -7,6 +7,9 @@ use crate::Result;
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use crate::coords::Tile;
 use crate::coords::{Bounds, DEFAULT_TILE_SIZE};
+use crate::encode::options::{
+    AvifOptions, EncodeOptions, JpegOptions, JxlOptions, PngOptions, WebPOptions,
+};
 use crate::tile::{Format, ResampleBackend};
 
 #[cfg(not(any(feature = "geographic", feature = "mercator")))]
@@ -32,6 +35,8 @@ pub struct GeoTiff {
     output: PathBuf,
     backend: ResampleBackend,
     tile_size: u32,
+    /// Per-format encoder options.  Each format uses its own sub-struct with sane defaults.
+    encode_options: EncodeOptions,
 }
 
 impl GeoTiff {
@@ -49,6 +54,7 @@ impl GeoTiff {
             output: PathBuf::from("tiles"),
             backend: ResampleBackend::Cpu,
             tile_size: DEFAULT_TILE_SIZE,
+            encode_options: EncodeOptions::default(),
         })
     }
 
@@ -87,6 +93,42 @@ impl GeoTiff {
         self
     }
 
+    /// Set PNG-specific encoding options (compression level, filter).
+    pub fn png_options(mut self, opts: PngOptions) -> Self {
+        self.encode_options.png = opts;
+        self
+    }
+
+    /// Set JPEG-specific encoding options (quality).
+    ///
+    /// Note: alpha channels are automatically stripped for JPEG output (RGBA → RGB).
+    pub fn jpeg_options(mut self, opts: JpegOptions) -> Self {
+        self.encode_options.jpeg = opts;
+        self
+    }
+
+    /// Set WebP-specific encoding options (lossless flag, quality for future lossy path).
+    pub fn webp_options(mut self, opts: WebPOptions) -> Self {
+        self.encode_options.webp = opts;
+        self
+    }
+
+    /// Set AVIF-specific encoding options (quality, encoder speed).
+    ///
+    /// Requires the `avif` Cargo feature.
+    pub fn avif_options(mut self, opts: AvifOptions) -> Self {
+        self.encode_options.avif = opts;
+        self
+    }
+
+    /// Set JPEG XL–specific encoding options (Butteraugli distance, effort, lossless flag).
+    ///
+    /// Requires the `jxl` Cargo feature.
+    pub fn jxl_options(mut self, opts: JxlOptions) -> Self {
+        self.encode_options.jxl = opts;
+        self
+    }
+
     /// Run the full tiling pipeline, writing `{output}/{z}/{x}/{y}.{ext}` for every
     /// tile that overlaps the source raster extent.
     ///
@@ -122,10 +164,19 @@ impl GeoTiff {
             "dataset ready"
         );
 
-        self.run(ds, ds_bounds, &gt, ds_width, ds_height, band_count)
+        self.run(
+            ds,
+            ds_bounds,
+            &gt,
+            ds_width,
+            ds_height,
+            band_count,
+            &self.encode_options,
+        )
     }
 
     #[cfg(feature = "geographic")]
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &self,
         ds: &gdal::Dataset,
@@ -134,6 +185,7 @@ impl GeoTiff {
         ds_width: usize,
         ds_height: usize,
         band_count: usize,
+        encode_options: &EncodeOptions,
     ) -> Result<()> {
         use crate::coords::geographic::Geographic;
 
@@ -161,11 +213,13 @@ impl GeoTiff {
             self.chunk_size,
             self.tile_size,
             self.format,
+            encode_options,
             &self.output,
         )
     }
 
     #[cfg(all(not(feature = "geographic"), feature = "mercator"))]
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &self,
         ds: &gdal::Dataset,
@@ -174,6 +228,7 @@ impl GeoTiff {
         ds_width: usize,
         ds_height: usize,
         band_count: usize,
+        encode_options: &EncodeOptions,
     ) -> Result<()> {
         use crate::coords::mercator::WebMercator;
 
@@ -201,11 +256,13 @@ impl GeoTiff {
             self.chunk_size,
             self.tile_size,
             self.format,
+            encode_options,
             &self.output,
         )
     }
 
     #[cfg(not(any(feature = "geographic", feature = "mercator")))]
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &self,
         _ds: &gdal::Dataset,
@@ -214,6 +271,7 @@ impl GeoTiff {
         _ds_width: usize,
         _ds_height: usize,
         _band_count: usize,
+        _encode_options: &EncodeOptions,
     ) -> Result<()> {
         Err(Error::Encode(
             "no CRS tile math compiled in; enable the 'geographic' or 'mercator' feature".into(),

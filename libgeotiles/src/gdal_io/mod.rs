@@ -183,5 +183,104 @@ pub fn read_chunk(ds: &Dataset, row_start: usize, row_count: usize) -> crate::Re
     })
 }
 
+/// Append a synthetic alpha channel to `chunk` by reading GDAL's mask band for the given
+/// chunk region.
+///
+/// GDAL's mask band (from `GDALGetMaskBand`) encodes validity at native pixel precision,
+/// so this works correctly for Float32, Int16, etc. — unlike comparing u8-converted pixel
+/// values against a stored f64 nodata value.
+///
+/// **Mask value semantics:** 255 = valid (fully opaque), 0 = nodata / masked (transparent).
+///
+/// **Behaviour by source band count:**
+/// - `band_count == 1` or `3` — if masking is non-trivial, a new alpha band is appended,
+///   making the effective band count 2 or 4 respectively.
+/// - `band_count == 4` with `GMF_ALPHA` set — the dataset carries a real alpha band that
+///   GDAL already read as the 4th data band; no synthetic band is added.
+/// - `band_count == 4` with other masking — silently skipped (adding a 5th band is
+///   not supported by the encoder pipeline).
+/// - All-valid mask (`GMF_ALL_VALID`) — early return, no allocation.
+///
+/// Returns `true` when an alpha band was appended (effective band count increased by 1).
+pub fn append_mask_alpha(
+    ds: &Dataset,
+    chunk: &mut crate::tile::ChunkBuffer,
+    row_start: usize,
+    row_count: usize,
+) -> crate::Result<bool> {
+    use tracing::debug;
+
+    let ds_width = chunk.ds_width;
+
+    // Inspect band 1's mask flags (typically shared per-dataset for nodata).
+    let band1 = ds.rasterband(1)?;
+    let flags = band1.mask_flags()?;
+
+    // Fast path: nothing to mask.
+    if flags.is_all_valid() {
+        return Ok(false);
+    }
+
+    // The dataset already has an explicit alpha band (GDAL reads it as the last data band).
+    // Our 4-band RGBA path handles it natively — no synthetic band needed.
+    if flags.is_alpha() {
+        return Ok(false);
+    }
+
+    // A 4-band dataset with nodata masking (no alpha) would become 5-band after adding alpha,
+    // which the encoder pipeline does not support. Skip rather than produce a hard error.
+    if chunk.band_count() == 4 {
+        debug!(
+            "4-band dataset with nodata masking: skipping alpha synthesis (band 4 is not an alpha band)"
+        );
+        return Ok(false);
+    }
+
+    // Read the primary mask band.  For GMF_PER_DATASET (nodata masking, most common), all
+    // bands share a single mask so one read is sufficient.
+    let mask_band = band1.open_mask_band()?;
+    let mask_buf = mask_band.read_as::<u8>(
+        (0, row_start as isize),
+        (ds_width, row_count),
+        (ds_width, row_count),
+        None,
+    )?;
+    let mut alpha = mask_buf.data().to_vec();
+
+    // For non-per-dataset masks each band has its own mask; AND-combine them so that a
+    // pixel is transparent if *any* band considers it invalid.
+    if !flags.is_per_dataset() {
+        let band_count = ds.raster_count();
+        for band_idx in 2..=band_count {
+            let band = ds.rasterband(band_idx)?;
+            if band.mask_flags()?.is_all_valid() {
+                continue;
+            }
+            let mb = band.open_mask_band()?;
+            let mb_buf = mb.read_as::<u8>(
+                (0, row_start as isize),
+                (ds_width, row_count),
+                (ds_width, row_count),
+                None,
+            )?;
+            for (a, m) in alpha.iter_mut().zip(mb_buf.data().iter()) {
+                if *m == 0 {
+                    *a = 0;
+                }
+            }
+        }
+    }
+
+    debug!(
+        row_start,
+        row_count,
+        prev_band_count = chunk.band_count(),
+        "appended synthetic alpha band from GDAL mask"
+    );
+
+    chunk.band_data.push(alpha);
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests;

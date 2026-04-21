@@ -2,8 +2,10 @@
 pub mod coords;
 #[doc(hidden)]
 pub mod crs;
-#[cfg(any(feature = "geographic", feature = "mercator"))]
-mod encode;
+// `encode` is always compiled so that option types and `encode_tile` are unconditionally
+// available (for benchmarks and the `GeoTiff` builder API).  The actual encoding functions
+// inside it are individually gated on their respective Cargo features (`png`, `jpeg`, etc.).
+pub(crate) mod encode;
 pub mod error;
 #[doc(hidden)]
 pub mod gdal_io;
@@ -14,6 +16,15 @@ mod pipeline;
 pub mod tile;
 
 pub use coords::{Bounds, Tile, flip_y};
+/// Semi-public re-export of the raw tile encoder for use in benchmarks.
+///
+/// This is **not** part of the stable public API; it may change without notice.
+#[doc(hidden)]
+pub use encode::encode_tile;
+pub use encode::options::{
+    AvifOptions, EncodeOptions, JpegOptions, JxlOptions, PngCompression, PngFilter, PngOptions,
+    WebPOptions,
+};
 pub use error::Error;
 pub use geotiff::GeoTiff;
 pub use tile::{Format, ResampleBackend};

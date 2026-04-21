@@ -82,6 +82,7 @@ impl ChunkBuffer {
 fn pixel_type(bands: usize) -> Result<PixelType> {
     match bands {
         1 => Ok(PixelType::U8),
+        2 => Ok(PixelType::U8x2),
         3 => Ok(PixelType::U8x3),
         4 => Ok(PixelType::U8x4),
         n => Err(Error::BadBandCount(n)),

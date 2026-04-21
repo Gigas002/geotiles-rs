@@ -7,6 +7,7 @@ use tracing::{debug, info, info_span};
 use crate::Result;
 use crate::coords::{Bounds, Tile};
 use crate::encode::encode_tile;
+use crate::encode::options::EncodeOptions;
 use crate::gdal_io::read_chunk;
 use crate::tile::{Format, crop_tile};
 
@@ -41,6 +42,7 @@ pub(crate) fn run_pipeline(
     chunk_size: usize,
     tile_size: u32,
     format: Format,
+    encode_options: &EncodeOptions,
     output: &Path,
 ) -> Result<()> {
     for z in zoom {
@@ -52,6 +54,7 @@ pub(crate) fn run_pipeline(
         let total_tiles: usize = chunk_groups.values().map(|v| v.len()).sum();
         info!(
             z,
+            band_count,
             total_tiles,
             num_chunks = chunk_groups.len(),
             "enumerating tiles for zoom level"
@@ -77,11 +80,24 @@ pub(crate) fn run_pipeline(
                 "reading chunk"
             );
 
-            let chunk = read_chunk(ds, chunk_start, row_count)?;
+            let mut chunk = read_chunk(ds, chunk_start, row_count)?;
+
+            // Append a synthetic alpha band from the GDAL mask if the dataset has nodata or
+            // an explicit alpha channel.  After this call, chunk.band_count() is the ground
+            // truth for the effective number of bands (may be dataset band_count + 1).
+            crate::gdal_io::append_mask_alpha(ds, &mut chunk, chunk_start, row_count)?;
+            let effective_bands = chunk.band_count();
 
             jobs.par_iter().try_for_each(|job| -> Result<()> {
                 let pixels = crop_tile(&chunk, job.window, tile_size)?;
-                let encoded = encode_tile(&pixels, tile_size, tile_size, band_count, format)?;
+                let encoded = encode_tile(
+                    &pixels,
+                    tile_size,
+                    tile_size,
+                    effective_bands,
+                    format,
+                    encode_options,
+                )?;
 
                 let tile_path = output
                     .join(z.to_string())
