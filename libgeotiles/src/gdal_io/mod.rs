@@ -5,6 +5,9 @@ use gdal::Dataset;
 use gdal::spatial_ref::SpatialRef;
 use tracing::{debug, info};
 
+use crate::coords::Bounds;
+use crate::tile::{ChunkBuffer, PixelWindow};
+
 use crate::Result;
 
 /// Metadata read from a GDAL dataset on open.
@@ -107,6 +110,77 @@ pub fn warp_to_epsg(src: &Dataset, target_epsg: u32) -> Result<Option<Dataset>> 
     );
 
     Ok(Some(warped))
+}
+
+/// Compute the source-pixel window corresponding to `tile_geo` (in dataset CRS units).
+///
+/// Assumes a north-up raster (`gt[2] == 0`, `gt[4] == 0`). Returns `None` when the
+/// tile does not overlap the dataset extent.
+pub fn source_window(
+    tile_geo: &Bounds,
+    gt: &[f64; 6],
+    ds_width: usize,
+    ds_height: usize,
+) -> Option<PixelWindow> {
+    // gt[1] > 0 (pixel width), gt[5] < 0 (pixel height, top-down)
+    let col_f = (tile_geo.min_x - gt[0]) / gt[1];
+    let col_t = (tile_geo.max_x - gt[0]) / gt[1];
+    // max_y = top of tile → smallest row; min_y = bottom → largest row
+    let row_f = (tile_geo.max_y - gt[3]) / gt[5];
+    let row_t = (tile_geo.min_y - gt[3]) / gt[5];
+
+    let col_start = col_f.floor().max(0.0) as usize;
+    let col_end = (col_t.ceil().max(0.0) as usize).min(ds_width);
+    let row_start = row_f.floor().max(0.0) as usize;
+    let row_end = (row_t.ceil().max(0.0) as usize).min(ds_height);
+
+    if col_start >= col_end || row_start >= row_end {
+        debug!(
+            col_start,
+            col_end, row_start, row_end, "source_window: tile outside dataset extent"
+        );
+        return None;
+    }
+
+    let w = PixelWindow {
+        col: col_start,
+        row: row_start,
+        width: col_end - col_start,
+        height: row_end - row_start,
+    };
+    debug!(?w, "source_window");
+    Some(w)
+}
+
+/// Read `row_count` source rows starting at absolute dataset row `row_start` into RAM.
+///
+/// All bands are read at full dataset width (so that [`crate::tile::crop_tile`] can
+/// index any column within the row using `window.col`). Data type is converted to `u8`
+/// by GDAL RasterIO; values from non-byte rasters are scaled/clamped automatically.
+pub fn read_chunk(ds: &Dataset, row_start: usize, row_count: usize) -> crate::Result<ChunkBuffer> {
+    let (ds_width, _ds_height) = ds.raster_size();
+    let band_count = ds.raster_count();
+
+    debug!(row_start, row_count, ds_width, band_count, "read_chunk");
+
+    let mut band_data = Vec::with_capacity(band_count);
+    for band_idx in 1..=band_count {
+        let band = ds.rasterband(band_idx)?;
+        let buf = band.read_as::<u8>(
+            (0, row_start as isize),
+            (ds_width, row_count),
+            (ds_width, row_count),
+            None,
+        )?;
+        band_data.push(buf.data().to_vec());
+    }
+
+    Ok(ChunkBuffer {
+        band_data,
+        ds_width,
+        row_start,
+        row_count,
+    })
 }
 
 #[cfg(test)]

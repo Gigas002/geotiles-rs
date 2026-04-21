@@ -19,7 +19,9 @@ pub struct Geographic {
 }
 
 impl Geographic {
-    pub const DEFAULT: Self = Self { tile_size: DEFAULT_TILE_SIZE };
+    pub const DEFAULT: Self = Self {
+        tile_size: DEFAULT_TILE_SIZE,
+    };
 
     pub fn new(tile_size: u32) -> Self {
         Self { tile_size }

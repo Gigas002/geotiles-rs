@@ -49,7 +49,9 @@ pub struct WebMercator {
 }
 
 impl WebMercator {
-    pub const DEFAULT: Self = Self { tile_size: DEFAULT_TILE_SIZE };
+    pub const DEFAULT: Self = Self {
+        tile_size: DEFAULT_TILE_SIZE,
+    };
 
     pub fn new(tile_size: u32) -> Self {
         Self { tile_size }
@@ -88,7 +90,12 @@ impl WebMercator {
         let mb = self.merc_bounds(t);
         let (min_x, min_y) = from_merc(mb.min_x, mb.min_y);
         let (max_x, max_y) = from_merc(mb.max_x, mb.max_y);
-        Bounds { min_x, min_y, max_x, max_y }
+        Bounds {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+        }
     }
 
     /// Web Mercator bounding box (metres) of tile `t`.

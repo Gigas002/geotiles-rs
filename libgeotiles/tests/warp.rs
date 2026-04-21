@@ -6,10 +6,14 @@ use gdal::spatial_ref::SpatialRef;
 fn synthetic_4326_gtiff(tag: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("geotiles_test_warp_{tag}.tif"));
     let driver = DriverManager::get_driver_by_name("GTiff").unwrap();
-    let mut ds = driver.create_with_band_type::<u8, _>(&path, 64, 64, 3).unwrap();
+    let mut ds = driver
+        .create_with_band_type::<u8, _>(&path, 64, 64, 3)
+        .unwrap();
     // Small tile in Western Europe: lon 0–1°, lat 49–50°
-    ds.set_geo_transform(&[0.0, 1.0 / 64.0, 0.0, 50.0, 0.0, -1.0 / 64.0]).unwrap();
-    ds.set_spatial_ref(&SpatialRef::from_epsg(4326).unwrap()).unwrap();
+    ds.set_geo_transform(&[0.0, 1.0 / 64.0, 0.0, 50.0, 0.0, -1.0 / 64.0])
+        .unwrap();
+    ds.set_spatial_ref(&SpatialRef::from_epsg(4326).unwrap())
+        .unwrap();
     path
 }
 

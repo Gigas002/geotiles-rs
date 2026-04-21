@@ -389,11 +389,11 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 4 — Single tile read + resize + encode
 
-- [ ] Given `(z,x,y)`, compute **source window** in **source pixels** (reuse/refine `get_areas` logic with GDAL's affine).
-- [ ] Implement **`chunk_size`** builder setter on `GeoTiff`: the pipeline reads at most one chunk of source pixels into RAM at a time; tiles overlapping that chunk are processed before the buffer is dropped. Provide a default (e.g. 512 rows or a configurable byte cap) so callers that do not set it are safe on large inputs.
-- [ ] Read raster band(s) into chunk buffer via GDAL `RasterIO` windowed read; tiles within that chunk pull from the in-RAM buffer — no redundant GDAL reads per tile.
-- [ ] Resize chunk-extracted tile window to `tile_size` with `fast_image_resize` **or** GDAL `RasterIO` with appropriate resampling — **one** primary path.
-- [ ] Encode **PNG** via `image` (`encode` module).
+- [x] Given `(z,x,y)`, compute **source window** in **source pixels** (reuse/refine `get_areas` logic with GDAL's affine).
+- [x] Implement **`chunk_size`** builder setter on `GeoTiff`: the pipeline reads at most one chunk of source pixels into RAM at a time; tiles overlapping that chunk are processed before the buffer is dropped. Provide a default (e.g. 512 rows or a configurable byte cap) so callers that do not set it are safe on large inputs.
+- [x] Read raster band(s) into chunk buffer via GDAL `RasterIO` windowed read; tiles within that chunk pull from the in-RAM buffer — no redundant GDAL reads per tile.
+- [x] Resize chunk-extracted tile window to `tile_size` with `fast_image_resize` **or** GDAL `RasterIO` with appropriate resampling — **one** primary path.
+- [x] Encode **PNG** via `image` (`encode` module).
 - **Verify:** write one tile to `/tmp` and open in an image viewer; run with a deliberately tiny `chunk_size` (e.g. 1 row) and confirm output is identical to default `chunk_size` (no tile corruption at chunk boundaries).
 
 ### Phase 5 — Full pipeline + disk output
@@ -501,3 +501,4 @@ Update this file when: workspace layout changes, a phase is completed (checkboxe
 | 2026-04-21 | §1.1: chunked/streaming I/O as first-class goal (200 GB+ inputs, configurable `chunk_size` on `GeoTiff`); §1.4 GPU work-split updated (VRAM chunk budget + free before next chunk); §2 layout: `pipeline/chunks.rs`; §3: `memmap2` note refined; §4: new step 4 (chunked read manager), renumbered subsequent steps; Phase 4/5: chunk-aware implementation steps; §6.6: `bench_chunk_size_sweep`; §8: RAM + VRAM exhaustion risks updated; §9.1 DoD: chunked I/O criterion |
 | 2026-04-21 | §3: GeoRust ecosystem reference (georust.org) added; §6.0: mandatory test file architecture rule (no inline tests — unit tests in sibling `tests.rs`, integration tests in `tests/`) |
 | 2026-04-21 | `TileJob` renamed to `GeoTiff` throughout; primary struct lives in `src/geotiff.rs`; API shape: `GeoTiff::open(path)?.zoom(..).chunk_size(..).format(..).output(..).crop()?`; `crop()` is the pipeline execution method; `ResampleBackend` and `TileFormat` unchanged; §1.3 parity row updated; §4 now opens with naming rationale + illustrative snippet; §2 layout updated (`geotiff.rs` added, `gdal_io/` marked internal)                                              |
+| 2026-04-21 | Phase 4 complete: `source_window`, `read_chunk` in `gdal_io`; `crop_tile` + `ChunkBuffer` in `tile`; `encode` module (PNG/JPEG/WebP dispatch); `GeoTiff` builder with `crop()` (EPSG:4326 path); `TileFormat` variants no longer feature-gated; §7.0 gates pass both feature matrices |

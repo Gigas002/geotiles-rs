@@ -1,4 +1,4 @@
-use super::{flip_y};
+use super::flip_y;
 
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use super::{Bounds, Tile};
@@ -111,15 +111,26 @@ mod geo {
         for (lon, lat, z) in cases {
             let t = g.tile(lon, lat, z);
             let b = g.bounds(t);
-            assert!(b.min_x <= lon && lon <= b.max_x, "lon {lon} outside tile at z={z}");
-            assert!(b.min_y <= lat && lat <= b.max_y, "lat {lat} outside tile at z={z}");
+            assert!(
+                b.min_x <= lon && lon <= b.max_x,
+                "lon {lon} outside tile at z={z}"
+            );
+            assert!(
+                b.min_y <= lat && lat <= b.max_y,
+                "lat {lat} outside tile at z={z}"
+            );
         }
     }
 
     #[test]
     fn tile_range_world_z2() {
         let g = Geographic::DEFAULT;
-        let world = Bounds { min_x: -180.0, min_y: -90.0, max_x: 180.0, max_y: 90.0 };
+        let world = Bounds {
+            min_x: -180.0,
+            min_y: -90.0,
+            max_x: 180.0,
+            max_y: 90.0,
+        };
         let (min, max) = g.tile_range(world, 2);
         assert_eq!(min, Tile::new(0, 0, 2));
         assert_eq!(max, Tile::new(7, 3, 2));
@@ -212,8 +223,14 @@ mod merc {
         for (lon, lat, z) in cases {
             let t = m.tile(lon, lat, z);
             let b = m.bounds(t);
-            assert!(b.min_x <= lon && lon <= b.max_x, "lon {lon} outside tile at z={z}");
-            assert!(b.min_y <= lat && lat <= b.max_y, "lat {lat} outside tile at z={z}");
+            assert!(
+                b.min_x <= lon && lon <= b.max_x,
+                "lon {lon} outside tile at z={z}"
+            );
+            assert!(
+                b.min_y <= lat && lat <= b.max_y,
+                "lat {lat} outside tile at z={z}"
+            );
         }
     }
 
