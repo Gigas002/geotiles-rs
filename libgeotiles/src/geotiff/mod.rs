@@ -4,10 +4,12 @@ use std::path::{Path, PathBuf};
 use tracing::{info, info_span};
 
 use crate::Result;
+#[cfg(any(feature = "geographic", feature = "mercator"))]
+use crate::coords::Tile;
 use crate::coords::{Bounds, DEFAULT_TILE_SIZE};
 use crate::tile::{Format, ResampleBackend};
 
-#[cfg(not(feature = "geographic"))]
+#[cfg(not(any(feature = "geographic", feature = "mercator")))]
 use crate::error::Error;
 
 /// Builder and entry point for the tile generation pipeline.
@@ -24,7 +26,7 @@ use crate::error::Error;
 pub struct GeoTiff {
     path: PathBuf,
     zoom: RangeInclusive<u8>,
-    /// Maximum source-pixel rows loaded into RAM per iteration.
+    /// Maximum source-pixel rows read into RAM per chunk iteration.
     chunk_size: usize,
     format: Format,
     output: PathBuf,
@@ -38,7 +40,6 @@ impl GeoTiff {
     /// Validates that the dataset is readable; the full pipeline runs only on [`Self::crop`].
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        // Validate the path opens as a GDAL dataset.
         let _ = crate::gdal_io::open_dataset(&path)?;
         Ok(Self {
             path,
@@ -89,15 +90,14 @@ impl GeoTiff {
     /// Run the full tiling pipeline, writing `{output}/{z}/{x}/{y}.{ext}` for every
     /// tile that overlaps the source raster extent.
     ///
-    /// Phase 4 implements EPSG:4326 (geographic) tiles. The source is warped to 4326
-    /// on-demand via a lazy VRT if needed. Requires the `geographic` Cargo feature.
+    /// The outer loop iterates sequential source-pixel chunks (bounded by `chunk_size`);
+    /// tiles within each chunk are processed in parallel via rayon.
     pub fn crop(self) -> Result<()> {
         let _span = info_span!("GeoTiff::crop", path = %self.path.display()).entered();
 
         let (src_ds, _) = crate::gdal_io::open_dataset(&self.path)?;
-        // Warp to EPSG:4326 if the source is in another CRS; lazy VRT, no full reproject.
+        // Warp to EPSG:4326 via a lazy in-memory VRT; no full reproject for large rasters.
         let warped_opt = crate::gdal_io::warp_to_epsg(&src_ds, 4326)?;
-        // working_ds borrows either the warp VRT or the original; both outlive this scope.
         let ds = warped_opt.as_ref().unwrap_or(&src_ds);
 
         let (ds_width, ds_height) = ds.raster_size();
@@ -122,11 +122,11 @@ impl GeoTiff {
             "dataset ready"
         );
 
-        self.crop_geographic(ds, ds_bounds, &gt, ds_width, ds_height, band_count)
+        self.run(ds, ds_bounds, &gt, ds_width, ds_height, band_count)
     }
 
     #[cfg(feature = "geographic")]
-    fn crop_geographic(
+    fn run(
         &self,
         ds: &gdal::Dataset,
         ds_bounds: Bounds,
@@ -136,66 +136,77 @@ impl GeoTiff {
         band_count: usize,
     ) -> Result<()> {
         use crate::coords::geographic::Geographic;
-        use tracing::debug;
 
-        let geo = Geographic::new(self.tile_size);
+        struct GeoGrid(Geographic);
 
-        for z in self.zoom.clone() {
-            let _span = info_span!("zoom", z).entered();
-            let (tile_min, tile_max) = geo.tile_range(ds_bounds, z);
-            info!(
-                z,
-                x_min = tile_min.x,
-                x_max = tile_max.x,
-                y_min = tile_min.y,
-                y_max = tile_max.y,
-                "zoom level"
-            );
-
-            for ty in tile_min.y..=tile_max.y {
-                for tx in tile_min.x..=tile_max.x {
-                    let tile = crate::coords::Tile::new(tx, ty, z);
-                    let tile_bounds = geo.bounds(tile);
-
-                    let Some(win) =
-                        crate::gdal_io::source_window(&tile_bounds, gt, ds_width, ds_height)
-                    else {
-                        debug!(tx, ty, z, "tile does not overlap dataset, skipping");
-                        continue;
-                    };
-
-                    debug!(tx, ty, z, ?win, "processing tile");
-
-                    // For Phase 4: one chunk read per tile (covers exactly this tile's rows).
-                    // Phase 5 will batch multiple tiles per chunk read.
-                    let chunk = crate::gdal_io::read_chunk(ds, win.row, win.height)?;
-                    let pixels = crate::tile::crop_tile(&chunk, win, self.tile_size)?;
-                    let encoded = crate::encode::encode_tile(
-                        &pixels,
-                        self.tile_size,
-                        self.tile_size,
-                        band_count,
-                        self.format,
-                    )?;
-
-                    let tile_path = self
-                        .output
-                        .join(z.to_string())
-                        .join(tx.to_string())
-                        .join(format!("{}.{}", ty, self.format.extension()));
-                    std::fs::create_dir_all(tile_path.parent().unwrap())?;
-                    std::fs::write(&tile_path, &encoded)?;
-
-                    debug!(path = %tile_path.display(), bytes = encoded.len(), "tile written");
-                }
+        impl crate::pipeline::TileGrid for GeoGrid {
+            fn tile_range(&self, area: Bounds, z: u8) -> (Tile, Tile) {
+                self.0.tile_range(area, z)
+            }
+            fn tile_bounds(&self, tile: Tile) -> Bounds {
+                self.0.bounds(tile)
             }
         }
 
-        Ok(())
+        let grid = GeoGrid(Geographic::new(self.tile_size));
+        crate::pipeline::run_pipeline(
+            ds,
+            &grid,
+            ds_bounds,
+            gt,
+            ds_width,
+            ds_height,
+            band_count,
+            self.zoom.clone(),
+            self.chunk_size,
+            self.tile_size,
+            self.format,
+            &self.output,
+        )
     }
 
-    #[cfg(not(feature = "geographic"))]
-    fn crop_geographic(
+    #[cfg(all(not(feature = "geographic"), feature = "mercator"))]
+    fn run(
+        &self,
+        ds: &gdal::Dataset,
+        ds_bounds: Bounds,
+        gt: &[f64; 6],
+        ds_width: usize,
+        ds_height: usize,
+        band_count: usize,
+    ) -> Result<()> {
+        use crate::coords::mercator::WebMercator;
+
+        struct MercGrid(WebMercator);
+
+        impl crate::pipeline::TileGrid for MercGrid {
+            fn tile_range(&self, area: Bounds, z: u8) -> (Tile, Tile) {
+                self.0.tile_range(area, z)
+            }
+            fn tile_bounds(&self, tile: Tile) -> Bounds {
+                self.0.bounds(tile)
+            }
+        }
+
+        let grid = MercGrid(WebMercator::new(self.tile_size));
+        crate::pipeline::run_pipeline(
+            ds,
+            &grid,
+            ds_bounds,
+            gt,
+            ds_width,
+            ds_height,
+            band_count,
+            self.zoom.clone(),
+            self.chunk_size,
+            self.tile_size,
+            self.format,
+            &self.output,
+        )
+    }
+
+    #[cfg(not(any(feature = "geographic", feature = "mercator")))]
+    fn run(
         &self,
         _ds: &gdal::Dataset,
         _ds_bounds: Bounds,

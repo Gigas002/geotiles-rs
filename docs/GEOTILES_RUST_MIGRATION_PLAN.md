@@ -398,10 +398,10 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 5 — Full pipeline + disk output
 
-- [ ] Enumerate all tiles for `[min_z, max_z]` over dataset extent (with optional **crop bbox** args later).
-- [ ] Implement `pipeline/chunks.rs`: outer loop iterates over **source-pixel chunks** (bounded by `GeoTiff::chunk_size`); inner loop processes all tiles whose source windows fall within the current chunk; buffer is released and next chunk read before moving on. This is the structure that keeps RAM bounded for 200 GB+ inputs.
-- [ ] **Parallelize** the inner (per-tile) loop with `rayon` (`par_iter` over tiles within a chunk); the outer chunk loop remains sequential to bound peak memory. Use `tracing` spans to log chunk index, tile count per chunk, and elapsed time.
-- [ ] Write tree `{z}/{x}/{y}.{ext}` for the selected default format (e.g. `.png`).
+- [x] Enumerate all tiles for `[min_z, max_z]` over dataset extent (with optional **crop bbox** args later).
+- [x] Implement `pipeline/chunks.rs`: outer loop iterates over **source-pixel chunks** (bounded by `GeoTiff::chunk_size`); inner loop processes all tiles whose source windows fall within the current chunk; buffer is released and next chunk read before moving on. This is the structure that keeps RAM bounded for 200 GB+ inputs.
+- [x] **Parallelize** the inner (per-tile) loop with `rayon` (`par_iter` over tiles within a chunk); the outer chunk loop remains sequential to bound peak memory. Use `tracing` spans to log chunk index, tile count per chunk, and elapsed time.
+- [x] Write tree `{z}/{x}/{y}.{ext}` for the selected default format (e.g. `.png`).
 - **Verify:** run on a sample GeoTIFF with a small `chunk_size` to exercise multiple chunk iterations; confirm tile tree is complete and correct.
 
 ### Phase 6 — Optional output formats and polish
@@ -502,3 +502,4 @@ Update this file when: workspace layout changes, a phase is completed (checkboxe
 | 2026-04-21 | §3: GeoRust ecosystem reference (georust.org) added; §6.0: mandatory test file architecture rule (no inline tests — unit tests in sibling `tests.rs`, integration tests in `tests/`) |
 | 2026-04-21 | `TileJob` renamed to `GeoTiff` throughout; primary struct lives in `src/geotiff.rs`; API shape: `GeoTiff::open(path)?.zoom(..).chunk_size(..).format(..).output(..).crop()?`; `crop()` is the pipeline execution method; `ResampleBackend` and `TileFormat` unchanged; §1.3 parity row updated; §4 now opens with naming rationale + illustrative snippet; §2 layout updated (`geotiff.rs` added, `gdal_io/` marked internal)                                              |
 | 2026-04-21 | Phase 4 complete: `source_window`, `read_chunk` in `gdal_io`; `crop_tile` + `ChunkBuffer` in `tile`; `encode` module (PNG/JPEG/WebP dispatch); `GeoTiff` builder with `crop()` (EPSG:4326 path); `TileFormat` variants no longer feature-gated; §7.0 gates pass both feature matrices |
+| 2026-04-21 | Phase 5 complete: `pipeline/` module with `TileGrid` trait, `run_pipeline` (chunked outer loop, rayon inner loop), `chunks::group_tiles_by_chunk`; `GeoTiff::crop()` delegates to pipeline; `rayon` added; `.typos.toml` excludes `GTiff2Tiles/`; §7.0 gates pass both feature matrices |

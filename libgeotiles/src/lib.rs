@@ -8,6 +8,8 @@ pub mod error;
 #[doc(hidden)]
 pub mod gdal_io;
 mod geotiff;
+#[cfg(any(feature = "geographic", feature = "mercator"))]
+mod pipeline;
 #[doc(hidden)]
 pub mod tile;
 
