@@ -6,7 +6,7 @@ name: Deploy
 on:
   push:
     tags:
-      - 'v[0-9]*'
+      - "v[0-9]*"
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,8 @@ jobs:
           sudo apt-get install -y \
             pkg-config \
             build-essential \
-            libgdal-dev
+            libgdal-dev \
+            libjxl-dev
 
       - name: Build release binary
         run: cargo build -p geotiles --release
@@ -75,7 +76,8 @@ jobs:
           sudo apt-get install -y \
             pkg-config \
             build-essential \
-            libgdal-dev
+            libgdal-dev \
+            libjxl-dev
 
       - name: Publish libgeotiles
         run: cargo publish -p libgeotiles

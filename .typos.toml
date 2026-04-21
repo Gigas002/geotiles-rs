@@ -8,4 +8,4 @@ extend-exclude = [
 ]
 
 [default]
-extend-ignore-identifiers-re = []
+extend-ignore-identifiers-re = ["Paeth"]
