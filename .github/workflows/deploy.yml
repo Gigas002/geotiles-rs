@@ -20,22 +20,24 @@ jobs:
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
+    container: archlinux:latest
+
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: |
+          pacman -Syu --noconfirm \
+            curl \
+            pkgconf \
+            base-devel \
+            gdal \
+            libjxl
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            build-essential \
-            libgdal-dev \
-            libjxl-dev
 
       - name: Build release binary
         run: cargo build -p geotiles --release
@@ -63,21 +65,23 @@ jobs:
   publish-crates-io:
     name: Publish libgeotiles to crates.io
     runs-on: ubuntu-latest
+    container: archlinux:latest
     needs: github-release
     if: github.event_name == 'push'
+
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            build-essential \
-            libgdal-dev \
-            libjxl-dev
+          pacman -Syu --noconfirm \
+            curl \
+            pkgconf \
+            base-devel \
+            gdal \
+            libjxl
+
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Publish libgeotiles
         run: cargo publish -p libgeotiles
