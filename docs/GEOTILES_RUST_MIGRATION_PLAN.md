@@ -258,10 +258,10 @@ Large GeoTIFFs **cannot** be committed to the repo. **Git LFS is not an option.*
 
 **Rule: tests must never live inside source files.** No `#[cfg(test)]` blocks embedded in `.rs` modules.
 
-| Test kind         | Location                                          | Example                                  |
-| ----------------- | ------------------------------------------------- | ---------------------------------------- |
-| **Unit tests**    | Sibling `tests.rs` next to the module under test  | `src/gdal_io/mod.rs` → `src/gdal_io/tests.rs` |
-| **Integration tests** | `libgeotiles/tests/` (one file per concern)   | `tests/gdal_io.rs`                       |
+| Test kind             | Location                                         | Example                                       |
+| --------------------- | ------------------------------------------------ | --------------------------------------------- |
+| **Unit tests**        | Sibling `tests.rs` next to the module under test | `src/gdal_io/mod.rs` → `src/gdal_io/tests.rs` |
+| **Integration tests** | `libgeotiles/tests/` (one file per concern)      | `tests/gdal_io.rs`                            |
 
 Wire unit test files with `#[cfg(test)] mod tests;` at the bottom of the module — in the **module file**, pointing to the sibling `tests.rs`. The test logic itself lives only in `tests.rs`.
 
@@ -376,42 +376,41 @@ After the **`geotiles`** crate is added, run the **same six checks** with **`--w
 
 ### Phase 2 — Coordinates and tile indexing
 
-- [ ] Implement **Web Mercator** tile math (or **geographic** if you choose 4326 tiles — pick one default and document): resolution at `z`, `(lon, lat)` ↔ pixel, **tile (x, y, z)**.
-- [ ] TMS: optional **Y flip** when writing paths.
-- [ ] Unit tests: known **z/x/y** ↔ bbox corners for a few fixed points.
+- [x] Implement **Web Mercator** tile math (or **geographic** if you choose 4326 tiles — pick one default and document): resolution at `z`, `(lon, lat)` ↔ pixel, **tile (x, y, z)**.
+- [x] TMS: optional **Y flip** when writing paths.
+- [x] Unit tests: known **z/x/y** ↔ bbox corners for a few fixed points.
 - **Verify:** `cargo test -p libgeotiles` for `coords` tests.
 
 ### Phase 3 — Warp / CRS normalization
 
-- [ ] Implement **warp to EPSG:3857** (or 4326) using GDAL (`gdal::programs::raster::warp` or equivalent stable API for your `gdal` version).
-- [ ] Expose **working dataset** handle + geotransform after warp.
+- [x] Implement **warp to EPSG:3857** (or 4326) using GDAL (`gdal::programs::raster::warp` or equivalent stable API for your `gdal` version).
+- [x] Expose **working dataset** handle + geotransform after warp.
 - **Verify:** run on a small GeoTIFF; confirm bounds and pixel scale change as expected (log or debug assert).
 
 ### Phase 4 — Single tile read + resize + encode
 
-- [ ] Given `(z,x,y)`, compute **source window** in **source pixels** (reuse/refine `get_areas` logic with GDAL's affine).
-- [ ] Implement **`chunk_size`** builder setter on `GeoTiff`: the pipeline reads at most one chunk of source pixels into RAM at a time; tiles overlapping that chunk are processed before the buffer is dropped. Provide a default (e.g. 512 rows or a configurable byte cap) so callers that do not set it are safe on large inputs.
-- [ ] Read raster band(s) into chunk buffer via GDAL `RasterIO` windowed read; tiles within that chunk pull from the in-RAM buffer — no redundant GDAL reads per tile.
-- [ ] Resize chunk-extracted tile window to `tile_size` with `fast_image_resize` **or** GDAL `RasterIO` with appropriate resampling — **one** primary path.
-- [ ] Encode **PNG** via `image` (`encode` module).
+- [x] Given `(z,x,y)`, compute **source window** in **source pixels** (reuse/refine `get_areas` logic with GDAL's affine).
+- [x] Implement **`chunk_size`** builder setter on `GeoTiff`: the pipeline reads at most one chunk of source pixels into RAM at a time; tiles overlapping that chunk are processed before the buffer is dropped. Provide a default (e.g. 512 rows or a configurable byte cap) so callers that do not set it are safe on large inputs.
+- [x] Read raster band(s) into chunk buffer via GDAL `RasterIO` windowed read; tiles within that chunk pull from the in-RAM buffer — no redundant GDAL reads per tile.
+- [x] Resize chunk-extracted tile window to `tile_size` with `fast_image_resize` **or** GDAL `RasterIO` with appropriate resampling — **one** primary path.
+- [x] Encode **PNG** via `image` (`encode` module).
 - **Verify:** write one tile to `/tmp` and open in an image viewer; run with a deliberately tiny `chunk_size` (e.g. 1 row) and confirm output is identical to default `chunk_size` (no tile corruption at chunk boundaries).
 
 ### Phase 5 — Full pipeline + disk output
 
-- [ ] Enumerate all tiles for `[min_z, max_z]` over dataset extent (with optional **crop bbox** args later).
-- [ ] Implement `pipeline/chunks.rs`: outer loop iterates over **source-pixel chunks** (bounded by `GeoTiff::chunk_size`); inner loop processes all tiles whose source windows fall within the current chunk; buffer is released and next chunk read before moving on. This is the structure that keeps RAM bounded for 200 GB+ inputs.
-- [ ] **Parallelize** the inner (per-tile) loop with `rayon` (`par_iter` over tiles within a chunk); the outer chunk loop remains sequential to bound peak memory. Use `tracing` spans to log chunk index, tile count per chunk, and elapsed time.
-- [ ] Write tree `{z}/{x}/{y}.{ext}` for the selected default format (e.g. `.png`).
+- [x] Enumerate all tiles for `[min_z, max_z]` over dataset extent (with optional **crop bbox** args later).
+- [x] Implement `pipeline/chunks.rs`: outer loop iterates over **source-pixel chunks** (bounded by `GeoTiff::chunk_size`); inner loop processes all tiles whose source windows fall within the current chunk; buffer is released and next chunk read before moving on. This is the structure that keeps RAM bounded for 200 GB+ inputs.
+- [x] **Parallelize** the inner (per-tile) loop with `rayon` (`par_iter` over tiles within a chunk); the outer chunk loop remains sequential to bound peak memory. Use `tracing` spans to log chunk index, tile count per chunk, and elapsed time.
+- [x] Write tree `{z}/{x}/{y}.{ext}` for the selected default format (e.g. `.png`).
 - **Verify:** run on a sample GeoTIFF with a small `chunk_size` to exercise multiple chunk iterations; confirm tile tree is complete and correct.
 
 ### Phase 6 — Optional output formats and polish
 
-- [ ] **`libgeotiles::encode`**: trait or enum dispatch **`TileFormat`** → encoder; **PNG** + **JPEG** + **WebP** via **`image`** features (`png`, `jpeg`, `webp`).
-- [ ] **AVIF** behind feature **`avif`**: integrate chosen encoder (see §3); document **system** deps if any.
-- [ ] **JPEG XL** behind feature **`jxl`**: integrate **`jxl-oxide`** / **`jxl`** (whichever is maintained and ergonomic at implementation time).
-- [ ] **Palette / quantization** (`imagequant` / external) — only if needed for size (often PNG-only).
-- [ ] Nodata handling, alpha band — align with GDAL dataset semantics; **JPEG** path drops or flattens alpha per §1.5.
-- **Verify:** `cargo build -p libgeotiles --features "png,jpeg,webp"` (and separately `--all-features` including `avif`, `jxl` when implemented).
+- [x] **`libgeotiles::encode`**: trait or enum dispatch **`TileFormat`** → encoder; **PNG** + **JPEG** + **WebP** via **`image`** features (`png`, `jpeg`, `webp`). (`Format` enum in `tile/mod.rs`; `encode_tile()` dispatches to per-format functions; all three tested.)
+- [x] **AVIF** behind feature **`avif`**: integrate chosen encoder (see §3); document **system** deps if any. (Pure-Rust `ravif` via `image/avif`; no system libs required; system-dep note in `README.md` and `encode/options.rs`.)
+- [x] **JPEG XL** behind feature **`jxl`**: integrate **`jxl-oxide`** / **`jxl`** (whichever is maintained and ergonomic at implementation time). (Used `jpegxl-rs` 0.14 wrapping `libjxl`; `JxlOptions` with `distance`, `effort`, `lossless`; all tests pass. Note: lossless is implemented via `distance=0.0` rather than `JxlEncoderSetFrameLossless` due to a call-order constraint in `jpegxl-rs` — see `encode/mod.rs` comment.)
+- [x] Nodata handling, alpha band — align with GDAL dataset semantics; **JPEG** path drops or flattens alpha per §1.5. (`gdal_io::append_mask_alpha` reads GDAL's native mask band (`GDALGetMaskBand`) at native pixel precision — correct for Float32/Int16/etc. datasets, not just UInt8. For 1-band or 3-band datasets with nodata, a synthetic alpha band is appended to the `ChunkBuffer` (making it 2-band La8 or 4-band RGBA); for 4-band RGBA datasets the existing alpha band is used as-is; all-valid datasets (`GMF_ALL_VALID`) are a zero-allocation fast path. The pipeline uses `chunk.band_count()` (not `ds.raster_count()`) after the mask step. All encoders support 2-band La8: PNG natively, JXL natively, JPEG strips alpha (La8→L8), WebP and AVIF expand La8→RGBA. JPEG strips RGBA→RGB as before.)
+- **Verify:** `cargo build -p libgeotiles --features "png,jpeg,webp"` (and separately `--all-features` including `avif`, `jxl` when implemented). ✅ Both build and all tests pass (`cargo test --all-features`).
 
 ### Phase 7 — GPU tile crop + scale (optional; **migration target**)
 
@@ -499,5 +498,7 @@ Update this file when: workspace layout changes, a phase is completed (checkboxe
 | 2026-04-20 | Library-first release (§1.6, §9.1); CLI + config deferred (§5, Phase 8, §9.2); workspace starts `libgeotiles`-only; §7.0 `-p libgeotiles`; phases renumbered                                                                                                                                                                                                                                                                                                               |
 | 2026-04-21 | §1.1: performance+simplicity and logging-throughout as first-class goals; tile crop in crate stated as mandatory rationale; §1.2: docs.rs handles API docs, tofi placeholder files noted as already copied; §6.6: Benchmarks subsection added (`criterion`, CPU vs GPU, lib comparison); Phase 0: add step to adapt tofi placeholder files; Phase 1: logging-throughout requirement; §9.1 DoD: benchmark baseline criterion                                                |
 | 2026-04-21 | §1.1: chunked/streaming I/O as first-class goal (200 GB+ inputs, configurable `chunk_size` on `GeoTiff`); §1.4 GPU work-split updated (VRAM chunk budget + free before next chunk); §2 layout: `pipeline/chunks.rs`; §3: `memmap2` note refined; §4: new step 4 (chunked read manager), renumbered subsequent steps; Phase 4/5: chunk-aware implementation steps; §6.6: `bench_chunk_size_sweep`; §8: RAM + VRAM exhaustion risks updated; §9.1 DoD: chunked I/O criterion |
-| 2026-04-21 | §3: GeoRust ecosystem reference (georust.org) added; §6.0: mandatory test file architecture rule (no inline tests — unit tests in sibling `tests.rs`, integration tests in `tests/`) |
+| 2026-04-21 | §3: GeoRust ecosystem reference (georust.org) added; §6.0: mandatory test file architecture rule (no inline tests — unit tests in sibling `tests.rs`, integration tests in `tests/`)                                                                                                                                                                                                                                                                                       |
 | 2026-04-21 | `TileJob` renamed to `GeoTiff` throughout; primary struct lives in `src/geotiff.rs`; API shape: `GeoTiff::open(path)?.zoom(..).chunk_size(..).format(..).output(..).crop()?`; `crop()` is the pipeline execution method; `ResampleBackend` and `TileFormat` unchanged; §1.3 parity row updated; §4 now opens with naming rationale + illustrative snippet; §2 layout updated (`geotiff.rs` added, `gdal_io/` marked internal)                                              |
+| 2026-04-21 | Phase 4 complete: `source_window`, `read_chunk` in `gdal_io`; `crop_tile` + `ChunkBuffer` in `tile`; `encode` module (PNG/JPEG/WebP dispatch); `GeoTiff` builder with `crop()` (EPSG:4326 path); `TileFormat` variants no longer feature-gated; §7.0 gates pass both feature matrices                                                                                                                                                                                      |
+| 2026-04-21 | Phase 5 complete: `pipeline/` module with `TileGrid` trait, `run_pipeline` (chunked outer loop, rayon inner loop), `chunks::group_tiles_by_chunk`; `GeoTiff::crop()` delegates to pipeline; `rayon` added; `.typos.toml` excludes `GTiff2Tiles/`; §7.0 gates pass both feature matrices                                                                                                                                                                                    |

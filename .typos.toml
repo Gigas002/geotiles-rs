@@ -3,7 +3,9 @@ extend-exclude = [
     "target/",
     "target/geotiles-test-data/",
     "Cargo.lock",
+    # C# reference codebase — not maintained by this project
+    "GTiff2Tiles/",
 ]
 
 [default]
-extend-ignore-identifiers-re = []
+extend-ignore-identifiers-re = ["Paeth"]

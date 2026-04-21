@@ -8,19 +8,34 @@ repository.workspace = true
 homepage.workspace = true
 
 [features]
-default = ["png"]
+default = ["png", "geographic", "mercator"]
+geographic = []
+mercator = []
 png = ["dep:image", "image/png"]
 jpeg = ["dep:image", "image/jpeg"]
 webp = ["dep:image", "image/webp"]
-avif = []
-jxl = []
+# AVIF encoding via `ravif` (pure Rust, no system libs required).
+avif = ["dep:image", "image/avif"]
+# JPEG XL encoding via `jpegxl-rs` (wraps `libjxl`; requires `libjxl-dev` system package,
+# or enable the `vendored` sub-feature to compile libjxl from source).
+# Note: `jpegxl-rs` is licensed GPL-3.0-or-later.
+jxl = ["dep:jpegxl-rs"]
 gpu = []
 
 [dependencies]
 gdal = { workspace = true }
+gdal-sys = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 image = { version = "0.25", default-features = false, optional = true }
+jpegxl-rs = { version = "0.14", default-features = false, optional = true }
+fast_image_resize = "6"
+rayon = "1"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "encode"
+harness = false
