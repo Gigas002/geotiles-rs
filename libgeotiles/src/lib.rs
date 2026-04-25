@@ -14,12 +14,18 @@ pub mod pipeline;
 pub mod tile;
 
 pub use backend::ResampleBackend;
+#[cfg(feature = "geographic")]
+pub use coords::geographic::Geographic;
+#[cfg(feature = "mercator")]
+pub use coords::mercator::WebMercator;
 pub use coords::{Bounds, Tile, flip_y};
 pub use encode::options::{
     AvifOptions, EncodeOptions, JpegOptions, JxlOptions, PngCompression, PngFilter, PngOptions,
     WebPOptions,
 };
 pub use error::Error;
+pub use pipeline::chunks::group_tiles_by_chunk;
+pub use pipeline::{TileGrid, TileJob};
 pub use tile::Format;
 
 /// Semi-public re-export of the raw tile encoder for use in benchmarks.

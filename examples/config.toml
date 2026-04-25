@@ -1,0 +1,54 @@
+# geotiles configuration file
+#
+# Discovery order:
+#   1. $XDG_CONFIG_HOME/geotiles/config.toml  (or ~/.config/geotiles/config.toml)
+#   2. --config <path>  overrides the default location
+#
+# All fields are optional.  CLI flags always take precedence over values here.
+
+# Output tile format: "png", "jpg", "webp", "avif", "jxl"  (default: "png")
+# extension = "png"
+
+# Use TMS (south-origin) y-axis ordering instead of XYZ  (default: false)
+# tms = false
+
+# Target coordinate system: "geographic" (EPSG:4326) or "mercator" (EPSG:3857)
+# (default: "geographic")
+# crs = "geographic"
+
+# Output band count per tile: 1–4  (default: source raster band count)
+# bands = 4
+
+# Tile width/height in pixels  (default: 256)
+# tilesize = 256
+
+# Generate tilemapresource.xml alongside the tiles  (default: false)
+# tmr = false
+
+# Source-pixel rows held in RAM at once (chunked I/O budget)  (default: 512)
+# chunk_size = 512
+
+# ── PNG encoder ───────────────────────────────────────────────────────────────
+[png]
+# compression = "default"   # "default" | "fast" | "best"
+# filter = "adaptive"       # "adaptive" | "none" | "sub" | "up" | "avg" | "paeth"
+
+# ── JPEG encoder ─────────────────────────────────────────────────────────────
+[jpeg]
+# quality = 85              # 1–100
+
+# ── WebP encoder ─────────────────────────────────────────────────────────────
+[webp]
+# lossless = true
+# quality = 85              # reserved for a future lossy path
+
+# ── AVIF encoder (requires the "avif" Cargo feature) ─────────────────────────
+[avif]
+# quality = 60              # 1–100
+# speed = 4                 # 1–10 (lower = smaller file, slower)
+
+# ── JPEG XL encoder (requires the "jxl" Cargo feature) ───────────────────────
+[jxl]
+# distance = 1.0            # perceptual distance; 0.0 = mathematically lossless
+# effort = 7                # 1–10 (higher = smaller file, slower)
+# lossless = false

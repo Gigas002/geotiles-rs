@@ -7,8 +7,12 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+# Each feature mirrors the same-named feature in libgeotiles so the binary
+# can be built with the same --features flags as the library.
 [features]
-default = ["libgeotiles/default"]
+default = ["geographic", "mercator", "png"]
+geographic = ["libgeotiles/geographic"]
+mercator = ["libgeotiles/mercator"]
 png = ["libgeotiles/png"]
 jpeg = ["libgeotiles/jpeg"]
 webp = ["libgeotiles/webp"]
@@ -18,3 +22,16 @@ gpu = ["libgeotiles/gpu"]
 
 [dependencies]
 libgeotiles = { path = "../libgeotiles" }
+# gdal is needed to pass &Dataset to libgeotiles I/O helpers.
+gdal = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+rayon = "1"
+anyhow = "1"
+tracing = { workspace = true }
+
+[[bin]]
+name = "geotiles"
+path = "src/main.rs"

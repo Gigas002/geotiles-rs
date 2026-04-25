@@ -8,4 +8,8 @@ extend-exclude = [
 ]
 
 [default]
-extend-ignore-identifiers-re = ["Paeth"]
+extend-ignore-identifiers-re = ["[Pp]aeth"]
+
+[default.extend-words]
+# Paeth is a proper noun (PNG filter named after Alan W. Paeth).
+paeth = "paeth"
