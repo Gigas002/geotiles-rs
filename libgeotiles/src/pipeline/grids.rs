@@ -4,8 +4,10 @@
 use crate::coords::geographic::Geographic;
 #[cfg(feature = "mercator")]
 use crate::coords::mercator::WebMercator;
+#[cfg(any(feature = "geographic", feature = "mercator"))]
 use crate::coords::{Bounds, Tile};
 
+#[cfg(any(feature = "geographic", feature = "mercator"))]
 use super::TileGrid;
 
 #[cfg(feature = "geographic")]

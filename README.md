@@ -2,19 +2,6 @@
 
 A Rust library for generating map tiles from GeoTIFF sources.
 
-> **Status:** early development — see [`docs/GEOTILES_RUST_MIGRATION_PLAN.md`](docs/GEOTILES_RUST_MIGRATION_PLAN.md) for the full roadmap.
-
----
-
-## Table of contents
-
-- [System dependencies](#system-dependencies)
-- [Feature flags](#feature-flags)
-- [Building](#building)
-- [Running tests](#running-tests)
-- [Running benchmarks](#running-benchmarks)
-- [Benchmark results](#benchmark-results)
-
 ---
 
 ## System dependencies
@@ -39,7 +26,7 @@ All format features are **opt-in**. `png` and the coordinate system features (`g
 | `jxl`        | JPEG XL encoding via `jxl-encoder` (pure Rust)  | ❌      |
 | `geographic` | Geographic (EPSG:4326) tile coordinate system   | ✅      |
 | `mercator`   | Web Mercator (EPSG:3857) tile coordinate system | ✅      |
-| `gpu`        | Reserved for future GPU tile pipeline (Phase 7) | ❌      |
+| `gpu`        | GPU tile pipeline                               | ❌      |
 
 ---
 
@@ -170,7 +157,7 @@ cargo bench -p libgeotiles --bench encode --features avif,jxl -- --sample-size 1
 
 ## Benchmark results
 
-Baseline snapshots are recorded in [`docs/benchmarks/`](docs/benchmarks/) as Markdown/CSV files whenever a path is first stabilised.  
+Baseline snapshots are recorded in `docs/benchmarks/` as Markdown/CSV files whenever a path is first stabilised.  
 Do **not** rely solely on Criterion's local HTML report for tracking regressions — commit a snapshot after any significant change to the encode or resample hot path.
 
 CI does **not** run benchmarks on every pull request. A separate optional workflow (manual trigger or `[bench]` commit tag) is used for reproducible performance comparisons on a pinned runner.
