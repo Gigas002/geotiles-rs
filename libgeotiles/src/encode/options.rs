@@ -141,15 +141,7 @@ impl Default for AvifOptions {
 
 // ── JPEG XL ───────────────────────────────────────────────────────────────────
 
-/// Options for JPEG XL encoding via `jpegxl-rs` (wraps `libjxl`).
-///
-/// # System dependency
-/// Requires the `libjxl` C library (`libjxl-dev` on Debian/Ubuntu).
-/// Alternatively, enable the `vendored` sub-feature of `jpegxl-rs` to compile it from source.
-///
-/// # Licence note
-/// `jpegxl-rs` and `jpegxl-sys` are licensed **GPL-3.0-or-later**, which is compatible with
-/// this crate's AGPL-3.0-only licence.
+/// Options for JPEG XL encoding via `jxl-encoder` (pure Rust, no system libraries required).
 #[derive(Debug, Clone, PartialEq)]
 pub struct JxlOptions {
     /// Butteraugli perceptual distance target (lossy quality):
@@ -161,10 +153,9 @@ pub struct JxlOptions {
     ///
     /// Ignored when `lossless = true`.
     pub distance: f32,
-    /// Encoder effort (1–9, higher → smaller output file at the cost of encoding speed).
+    /// Encoder effort (1–10, higher → smaller output file at the cost of encoding speed).
     ///
-    /// Corresponds to `libjxl`'s `effort` parameter:
-    /// 1 = Lightning, 7 = Squirrel (default), 9 = Tortoise.
+    /// Default: 7.
     pub effort: u8,
     /// Use true lossless encoding.
     ///

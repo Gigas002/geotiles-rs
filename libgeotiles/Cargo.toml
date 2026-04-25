@@ -16,10 +16,8 @@ jpeg = ["dep:image", "image/jpeg"]
 webp = ["dep:image", "image/webp"]
 # AVIF encoding via `ravif` (pure Rust, no system libs required).
 avif = ["dep:image", "image/avif"]
-# JPEG XL encoding via `jpegxl-rs` (wraps `libjxl`; requires `libjxl-dev` system package,
-# or enable the `vendored` sub-feature to compile libjxl from source).
-# Note: `jpegxl-rs` is licensed GPL-3.0-or-later.
-jxl = ["dep:jpegxl-rs"]
+# JPEG XL encoding via `jxl-encoder` (pure Rust, no system libraries required).
+jxl = ["dep:jxl-encoder"]
 gpu = ["dep:wgpu", "dep:pollster"]
 
 [dependencies]
@@ -28,7 +26,7 @@ gdal-sys = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 image = { version = "0.25", default-features = false, optional = true }
-jpegxl-rs = { version = "0.14", default-features = false, optional = true }
+jxl-encoder = { version = "0.3", optional = true }
 fast_image_resize = "6"
 rayon = "1"
 wgpu = { version = "29", optional = true }

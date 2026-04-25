@@ -199,39 +199,27 @@ fn encode_jxl(
 ) -> Result<Vec<u8>> {
     #[cfg(feature = "jxl")]
     {
-        use jpegxl_rs::encode::{ColorEncoding, EncoderFrame};
-        use jpegxl_rs::encoder_builder;
+        use jxl_encoder::api::{LosslessConfig, LossyConfig, PixelLayout};
 
-        let has_alpha = bands == 2 || bands == 4;
-        let speed = effort_to_speed(opts.effort);
+        let layout = match bands {
+            1 => PixelLayout::Gray8,
+            2 => PixelLayout::GrayAlpha8,
+            3 => PixelLayout::Rgb8,
+            4 => PixelLayout::Rgba8,
+            n => return Err(Error::BadBandCount(n)),
+        };
 
-        // When lossless is requested, use distance=0.0 which libjxl defines as
-        // "mathematically lossless". We intentionally do NOT set encoder.lossless,
-        // because jpegxl-rs calls JxlEncoderSetFrameLossless *before*
-        // JxlEncoderSetFrameDistance in set_options(), and libjxl rejects
-        // lossless=true when the internal distance is still at its non-zero default,
-        // producing "The encoder API is used in an incorrect way".
-        // distance=0.0 alone achieves the same mathematical losslessness without
-        // going through the problematic JxlEncoderSetFrameLossless path.
-        let distance = if opts.lossless { 0.0 } else { opts.distance };
-        let mut encoder = encoder_builder()
-            .has_alpha(has_alpha)
-            .speed(speed)
-            .quality(distance)
-            .build()
-            .map_err(|e| Error::Encode(e.to_string()))?;
-
-        if bands == 1 || bands == 2 {
-            // Grayscale (or grayscale + alpha): tell libjxl this is a single-channel image.
-            encoder.color_encoding = Some(ColorEncoding::SrgbLuma);
+        if opts.lossless {
+            LosslessConfig::new()
+                .with_effort(opts.effort)
+                .encode(pixels, width, height, layout)
+                .map_err(|e| Error::Encode(e.to_string()))
+        } else {
+            LossyConfig::new(opts.distance)
+                .with_effort(opts.effort)
+                .encode(pixels, width, height, layout)
+                .map_err(|e| Error::Encode(e.to_string()))
         }
-
-        let frame = EncoderFrame::new(pixels).num_channels(bands as u32);
-        let result: jpegxl_rs::encode::EncoderResult<u8> = encoder
-            .encode_frame(&frame, width, height)
-            .map_err(|e| Error::Encode(e.to_string()))?;
-
-        Ok(result.data)
     }
     #[cfg(not(feature = "jxl"))]
     {
@@ -285,23 +273,6 @@ fn color_type_no_alpha(bands: usize) -> Result<image::ExtendedColorType> {
         1 => Ok(image::ExtendedColorType::L8),
         3 => Ok(image::ExtendedColorType::Rgb8),
         n => Err(Error::BadBandCount(n)),
-    }
-}
-
-/// Convert a 1–9 effort integer to the corresponding `EncoderSpeed` variant.
-#[cfg(feature = "jxl")]
-fn effort_to_speed(effort: u8) -> jpegxl_rs::encode::EncoderSpeed {
-    use jpegxl_rs::encode::EncoderSpeed as S;
-    match effort.clamp(1, 9) {
-        1 => S::Lightning,
-        2 => S::Thunder,
-        3 => S::Falcon,
-        4 => S::Cheetah,
-        5 => S::Hare,
-        6 => S::Wombat,
-        7 => S::Squirrel,
-        8 => S::Kitten,
-        _ => S::Tortoise, // 9, clamped above
     }
 }
 
