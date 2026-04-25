@@ -86,3 +86,6 @@ impl ZoomRange {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -27,7 +27,7 @@ gdal = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "1"
 rayon = "1"
 anyhow = "1"
 tracing = { workspace = true }

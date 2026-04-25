@@ -107,7 +107,7 @@ pub struct JxlConfig {
 pub fn default_config_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| dirs_next().map(|h| h.join(".config")))?;
+        .or_else(|| home_dir().map(|h| h.join(".config")))?;
     Some(base.join("geotiles").join("config.toml"))
 }
 
@@ -123,6 +123,9 @@ pub fn load(path: &Path) -> anyhow::Result<Config> {
 }
 
 /// Minimal shim for `dirs::home_dir` without pulling in the `dirs` crate.
-fn dirs_next() -> Option<PathBuf> {
+fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
+
+#[cfg(test)]
+mod tests;

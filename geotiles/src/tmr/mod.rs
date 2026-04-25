@@ -7,11 +7,11 @@ use std::path::Path;
 
 use libgeotiles::coords::Bounds;
 
-use crate::run::{Crs, Params};
+use crate::settings::{Crs, Settings};
 
 /// Write `tilemapresource.xml` into `output_dir`.
-pub fn write(output_dir: &Path, params: &Params, ds_bounds: Bounds) -> anyhow::Result<()> {
-    let xml = render(params, ds_bounds);
+pub fn write(output_dir: &Path, settings: &Settings, ds_bounds: Bounds) -> anyhow::Result<()> {
+    let xml = render(settings, ds_bounds);
     let path = output_dir.join("tilemapresource.xml");
     std::fs::write(&path, xml)?;
     tracing::info!(path = %path.display(), "tilemapresource.xml written");
@@ -19,8 +19,8 @@ pub fn write(output_dir: &Path, params: &Params, ds_bounds: Bounds) -> anyhow::R
 }
 
 /// Render the XML document as a `String`.
-fn render(params: &Params, bounds: Bounds) -> String {
-    let (srs, profile, origin_x, origin_y) = match params.crs {
+pub(crate) fn render(settings: &Settings, bounds: Bounds) -> String {
+    let (srs, profile, origin_x, origin_y) = match settings.crs {
         Crs::Geographic => ("EPSG:4326", "global-geodetic", -180.0_f64, -90.0_f64),
         Crs::Mercator => (
             "EPSG:3857",
@@ -30,13 +30,13 @@ fn render(params: &Params, bounds: Bounds) -> String {
         ),
     };
 
-    let mime = mime_type(params.format);
-    let ext = params.format.extension();
-    let ts = params.tile_size;
+    let mime = mime_type(settings.format);
+    let ext = settings.format.extension();
+    let ts = settings.tile_size;
 
     let mut tile_sets = String::new();
-    for z in params.min_zoom..=params.max_zoom {
-        let units_per_pixel = units_per_pixel(params.crs, z, params.tile_size);
+    for z in settings.min_zoom..=settings.max_zoom {
+        let units_per_pixel = units_per_pixel(settings.crs, z, settings.tile_size);
         tile_sets.push_str(&format!(
             "    <TileSet href=\"{z}\" units-per-pixel=\"{units_per_pixel:.10}\" order=\"{z}\"/>\n"
         ));
@@ -67,7 +67,7 @@ fn render(params: &Params, bounds: Bounds) -> String {
 const MERC_ORIGIN_SHIFT: f64 = std::f64::consts::PI * 6_378_137.0;
 
 /// Ground resolution in the native CRS units per pixel at zoom `z`.
-fn units_per_pixel(crs: Crs, z: u8, tile_size: u32) -> f64 {
+pub(crate) fn units_per_pixel(crs: Crs, z: u8, tile_size: u32) -> f64 {
     let full_extent = match crs {
         // 180° / (tile_size × 2^z) for the geodetic profile (2× wider grid).
         Crs::Geographic => 180.0_f64,
@@ -77,7 +77,7 @@ fn units_per_pixel(crs: Crs, z: u8, tile_size: u32) -> f64 {
     full_extent / (tile_size as f64 * (1u64 << z) as f64)
 }
 
-fn mime_type(format: libgeotiles::Format) -> &'static str {
+pub(crate) fn mime_type(format: libgeotiles::Format) -> &'static str {
     use libgeotiles::Format;
     match format {
         Format::Png => "image/png",
@@ -87,3 +87,6 @@ fn mime_type(format: libgeotiles::Format) -> &'static str {
         Format::Jxl => "image/jxl",
     }
 }
+
+#[cfg(test)]
+mod tests;

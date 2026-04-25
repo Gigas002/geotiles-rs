@@ -1,18 +1,15 @@
 mod cli;
 mod config;
+mod logger;
 mod run;
+mod settings;
 mod tmr;
 
 use clap::Parser;
 use tracing::info;
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    logger::init();
 
     let cli = cli::Cli::parse();
 
@@ -29,38 +26,27 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    let zoom = cli::ZoomRange::parse(&cli.zoom)?;
-
-    let params = run::Params::resolve(
-        cli.input,
-        cli.output,
-        zoom.min,
-        zoom.max,
-        cli.extension,
-        cli.tms,
-        cli.crs,
-        cli.bands,
-        cli.tilesize,
-        cli.tmr,
-        cli.chunk_size,
-        &config,
-    )?;
+    // Resolve all settings from CLI + config.  Past this point `cli` and `config`
+    // must not be referenced again — only `settings` is passed downstream.
+    let settings = settings::Settings::resolve(&cli, &config)?;
+    drop(cli);
+    drop(config);
 
     info!(
-        input = %params.input.display(),
-        output = %params.output.display(),
-        min_zoom = params.min_zoom,
-        max_zoom = params.max_zoom,
-        format = ?params.format,
-        tms = params.tms,
-        crs = ?params.crs,
-        tile_size = params.tile_size,
-        tmr = params.tmr,
-        chunk_size = params.chunk_size,
+        input = %settings.input.display(),
+        output = %settings.output.display(),
+        min_zoom = settings.min_zoom,
+        max_zoom = settings.max_zoom,
+        format = ?settings.format,
+        tms = settings.tms,
+        crs = ?settings.crs,
+        tile_size = settings.tile_size,
+        tmr = settings.tmr,
+        chunk_size = settings.chunk_size,
         "starting"
     );
 
-    run::run(&params)?;
+    run::run(&settings)?;
 
     info!("done");
     Ok(())
