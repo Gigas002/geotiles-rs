@@ -17,10 +17,6 @@ use options::*;
 ///
 /// Returns [`Error::Encode`] at runtime if the corresponding Cargo feature
 /// (`png`, `jpeg`, `webp`, `avif`, `jxl`) is not compiled in.
-#[cfg_attr(
-    not(any(feature = "geographic", feature = "mercator")),
-    allow(dead_code)
-)]
 pub fn encode_tile(
     pixels: &[u8],
     width: u32,

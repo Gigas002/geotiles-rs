@@ -1,9 +1,7 @@
-//! Per-format encoder options, passed through the pipeline via [`EncodeOptions`].
+//! Per-format encoder options passed to [`crate::encode::encode_tile`].
 //!
 //! Each option struct has a [`Default`] implementation with sensible values so callers
-//! that do not customise encoding still get reasonable output.  The full bundle is stored
-//! on [`crate::GeoTiff`] and individual format options are set via builder methods such as
-//! `GeoTiff::jpeg_options(…)`.
+//! that do not customise encoding still get reasonable output.
 //!
 //! # Future CLI config
 //! These types are intentionally flat so they map cleanly to per-section TOML config, e.g.:
@@ -189,11 +187,10 @@ impl Default for JxlOptions {
 
 /// All per-format encoder options bundled together.
 ///
-/// Stored on [`crate::GeoTiff`]; set individual format options via builder methods, e.g.:
-/// ```rust,no_run
-/// # use libgeotiles::{GeoTiff, JpegOptions};
-/// GeoTiff::open("input.tif").unwrap()
-///     .jpeg_options(JpegOptions { quality: 90 });
+/// Construct with `Default::default()` and override only what you need:
+/// ```rust
+/// use libgeotiles::{EncodeOptions, JpegOptions};
+/// let opts = EncodeOptions { jpeg: JpegOptions { quality: 90 }, ..Default::default() };
 /// ```
 /// Unset options fall back to their `Default` implementation.
 #[derive(Debug, Clone, PartialEq, Default)]

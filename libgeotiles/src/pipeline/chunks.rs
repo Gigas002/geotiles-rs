@@ -8,7 +8,7 @@ use crate::tile::PixelWindow;
 
 use super::TileGrid;
 
-pub(crate) struct TileJob {
+pub struct TileJob {
     pub tile: Tile,
     pub window: PixelWindow,
 }
@@ -18,7 +18,7 @@ pub(crate) struct TileJob {
 ///
 /// Returns a `BTreeMap<chunk_id, Vec<TileJob>>` in ascending row order so the caller
 /// can iterate chunks sequentially and process tiles within each chunk in parallel.
-pub(crate) fn group_tiles_by_chunk(
+pub fn group_tiles_by_chunk(
     grid: &dyn TileGrid,
     ds_bounds: Bounds,
     gt: &[f64; 6],
