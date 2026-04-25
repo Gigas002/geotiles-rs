@@ -11,13 +11,14 @@
 //! Run with all format features:
 //!   cargo bench -p libgeotiles --bench encode --features png,jpeg,webp,avif,jxl
 
-use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 #[cfg(feature = "jxl")]
 use libgeotiles::JxlOptions;
 use libgeotiles::tile::Format;
 use libgeotiles::{
     AvifOptions, EncodeOptions, JpegOptions, PngCompression, PngOptions, encode_tile,
 };
+use std::hint::black_box;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

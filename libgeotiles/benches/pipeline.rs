@@ -14,9 +14,10 @@
 //! Compare GPU vs CPU results: Criterion stores HTML reports in `target/criterion/`.
 //! Snapshot baselines in `docs/benchmarks/` when a path is first stabilised (see §6.6).
 
-use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use libgeotiles::backend::cpu::crop_tile;
 use libgeotiles::tile::{ChunkBuffer, PixelWindow};
+use std::hint::black_box;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
