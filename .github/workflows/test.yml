@@ -41,4 +41,4 @@ jobs:
           key: ${{ matrix.features }}
 
       - name: Test (${{ matrix.features }})
-        run: RUSTFLAGS='-D warnings' cargo test -p libgeotiles ${{ matrix.features }}
+        run: RUSTFLAGS='-D warnings' cargo test --workspace ${{ matrix.features }}

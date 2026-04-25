@@ -1,0 +1,90 @@
+# libgeotiles test fixture manifest
+#
+# Lists stable reference GeoTIFFs used by integration tests that require real
+# raster data.  These files are NOT stored in the repository (no Git LFS).
+#
+# See §6 of docs/GEOTILES_RUST_MIGRATION_PLAN.md for the full caching policy.
+#
+# ── How fixtures are resolved (in priority order) ────────────────────────────
+#
+#   1. GEOTILES_TEST_DATA_DIR env var is set
+#      → look for `filename` inside that directory; no download is performed.
+#        Use this when you already have the files locally
+#        (e.g. `export GEOTILES_TEST_DATA_DIR=~/data/geotiles-fixtures`).
+#
+#   2. GEOTILES_TEST_FETCH env var is set
+#      → download from `url` into the cache directory
+#        (`$XDG_CACHE_HOME/geotiles-rs/` or `~/.cache/geotiles-rs/`),
+#        verify SHA-256 when present, then return the cached path.
+#
+#   3. Neither variable is set
+#      → `ensure_fixture` returns `None`; tests that call it must be marked
+#        `#[ignore]` so plain `cargo test` stays offline and instant.
+#
+# ── Running the full suite ────────────────────────────────────────────────────
+#
+#   # Download fixtures once, run all tests (including ignored):
+#   GEOTILES_TEST_FETCH=1 cargo test -p libgeotiles -- --include-ignored
+#
+#   # Use a local directory you already have (no download):
+#   GEOTILES_TEST_DATA_DIR=~/data/geotiles-fixtures cargo test -p libgeotiles -- --include-ignored
+#
+# ── Manifest format ───────────────────────────────────────────────────────────
+#
+# [[fixture]]
+# name        = "short_identifier"          # referenced by ensure_fixture("short_identifier")
+# filename    = "on_disk_name.tif"          # file name inside the cache / data dir
+# url         = "https://..."               # stable HTTPS download URL
+# sha256      = "abc123..."                 # optional hex SHA-256; omit to skip hash check
+# description = "Human-readable summary"   # CRS, size, band layout, intended test scope
+#
+# When sha256 is absent the file is used without hash verification — acceptable
+# for development but not for CI where supply-chain integrity matters.
+
+# ── Small smoke-test fixtures (fast download, < 1 MB) ────────────────────────
+
+[[fixture]]
+name        = "byte_tif"
+filename    = "byte.tif"
+url         = "https://raw.githubusercontent.com/OSGeo/gdal/v3.10.2/autotest/gcore/data/byte.tif"
+# sha256 not yet recorded; run `sha256sum byte.tif` after first download and fill in here.
+description = """\
+20×20 single-band uint8 GeoTIFF; NAD27 / UTM zone 11N (EPSG:26711). \
+Used for smoke-testing open_dataset, source_window, and warp_to_epsg \
+(exercises the reproject path because the source is not EPSG:4326 or EPSG:3857). \
+Extremely small — suitable for chunk_size boundary tests at chunk_size=1.\
+"""
+
+[[fixture]]
+name        = "rgba_small"
+filename    = "stefan_full_rgba.tif"
+url         = "https://raw.githubusercontent.com/OSGeo/gdal/v3.10.2/autotest/gcore/data/stefan_full_rgba.tif"
+# sha256 not yet recorded.
+description = """\
+237×215 RGBA uint8 GeoTIFF without a CRS (no projection / no geotransform). \
+Used for testing the append_mask_alpha alpha-band passthrough path and RGBA \
+→ JPEG alpha-stripping.  No reprojection is meaningful for this fixture. \
+"""
+
+# ── Medium reference fixtures (representative real-world inputs) ──────────────
+#
+# Add entries here as stable public hosting becomes available.
+# Recommended properties for a good medium fixture:
+#   - EPSG:4326 source (exercises the no-warp path)
+#   - 500–5 000 px on each side (fast but non-trivial)
+#   - Single-band or RGB (avoids AVIF/JXL alpha-path issues in CI)
+#   - Hosted on a CDN or static file server with a permanent URL
+
+# [[fixture]]
+# name        = "natural_earth_10m_gray"
+# filename    = "NE1_10M_SR.tif"
+# url         = "https://example.com/NE1_10M_SR.tif"
+# sha256      = "TODO"
+# description = "Natural Earth 1:10m shaded relief (EPSG:4326); ~21 600×10 800 px; single band."
+
+# ── Large stress-test fixtures (≥ 100 MB; CI optional) ───────────────────────
+#
+# These are intentionally left unpopulated.  Add entries when a stable,
+# publicly accessible URL is available.  Mark consuming tests with both
+# `#[ignore]` and a `GEOTILES_TEST_LARGE` gate so they are not run in
+# normal CI.

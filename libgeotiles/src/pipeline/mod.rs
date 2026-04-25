@@ -1,6 +1,7 @@
 use crate::coords::{Bounds, Tile};
 
 pub mod chunks;
+pub mod grids;
 pub use chunks::TileJob;
 
 /// Abstraction over a tile coordinate grid (geographic or Web Mercator).

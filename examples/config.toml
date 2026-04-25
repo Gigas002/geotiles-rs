@@ -1,0 +1,135 @@
+# geotiles configuration file
+#
+# Discovery order:
+#   1. $XDG_CONFIG_HOME/geotiles/config.toml  (or ~/.config/geotiles/config.toml)
+#   2. --config <path>  CLI flag overrides the default location
+#
+# CLI flags always take precedence over values in this file.
+# Values in this file take precedence over built-in defaults.
+# All fields are optional; omit any key to fall back to the built-in default.
+
+# Output tile image format.
+# Built-in default: "png"
+# Valid values: "png" | "jpg" | "webp" | "avif" | "jxl"
+#   png  — lossless, universal, largest files
+#   jpg  — lossy, smallest files, no alpha channel (alpha is stripped)
+#   webp — lossless (current backend); good for web delivery
+#   avif — modern lossy/lossless; requires the "avif" Cargo feature
+#   jxl  — JPEG XL; requires the "jxl" Cargo feature
+extension = "png"
+
+# Use TMS (south-origin) Y-axis tile ordering instead of the default XYZ
+# (north-origin / slippy-map) ordering.
+# Set true when your tile consumer expects TMS
+# (e.g. some older slippy-map libraries and OGC TMS 1.0.0 clients).
+# Built-in default: false
+tms = false
+
+# Target coordinate reference system for the output tile grid.
+# Built-in default: "geographic"
+# Valid values:
+#   "geographic" | "geodetic" | "4326" | "epsg:4326"  — EPSG:4326 lat/lon grid
+#   "mercator"   | "webmercator" | "3857" | "epsg:3857" — Web Mercator (Google Maps)
+crs = "geographic"
+
+# Number of colour channels (bands) written per output tile: 1–4.
+# Omit (or comment out) to inherit the source raster band count.
+#   1 = greyscale (L8)
+#   2 = greyscale + alpha (La8)
+#   3 = RGB
+#   4 = RGBA
+# Note: JPEG does not support alpha — alpha is automatically stripped for jpg output.
+# bands = 4
+
+# Tile width and height in pixels.  Must be a power of two.
+# Common values: 256 (standard web maps), 512 (high-DPI / retina).
+# Built-in default: 256
+tilesize = 256
+
+# Write an OGC TMS 1.0.0 tilemapresource.xml file into the output directory.
+# Useful for compatibility with MapTiler, gdal2tiles, and TMS-aware clients.
+# Built-in default: false
+tmr = false
+
+# Maximum number of source-pixel rows loaded into RAM at once (chunked I/O budget).
+# Smaller values use less memory but may require more GDAL reads.
+# Larger values are faster for tall rasters that fit in RAM.
+# Rule of thumb: set to (available_RAM_bytes / (raster_width_px * bytes_per_pixel)).
+# Built-in default: 512
+chunk_size = 512
+
+# ── PNG encoder ───────────────────────────────────────────────────────────────
+
+[png]
+# Zlib compression preset applied to every PNG tile.
+# "default" balances encode speed and output size (recommended for most use-cases).
+# "fast"    prioritises encode speed — larger files, very fast.
+# "best"    prioritises file size — smallest files, slower encode.
+# Built-in default: "default"
+compression = "default"
+
+# Row filter heuristic applied before zlib compression.
+# "adaptive" lets the encoder choose the best filter per row (recommended).
+# "none"     no filtering — fastest, largest files.
+# "sub"      difference from previous byte in same row.
+# "up"       difference from byte above.
+# "avg"      average of left and above.
+# "paeth"    Paeth predictor (often best for photographic content).
+# Built-in default: "adaptive"
+filter = "adaptive"
+
+# ── JPEG encoder ─────────────────────────────────────────────────────────────
+
+[jpeg]
+# Lossy quality factor.  Higher = better quality and larger file.
+# 85 is a widely-used default that balances quality and size.
+# Range: 1–100.  Built-in default: 85
+quality = 85
+
+# ── WebP encoder ─────────────────────────────────────────────────────────────
+
+[webp]
+# Use lossless WebP encoding.
+# The current image/webp backend supports lossless only; this field is wired in
+# for forward-compatibility with a future lossy path.
+# Built-in default: true
+lossless = true
+
+# Quality for a future lossy WebP path (0–100).
+# Reserved; not yet active — present for API completeness.
+# Built-in default: 85
+# quality = 85
+
+# ── AVIF encoder (requires Cargo feature "avif") ─────────────────────────────
+
+[avif]
+# Encoder quality.  Higher = better quality, larger file.
+# 60 gives a good quality/size trade-off for photographic tile content.
+# Range: 1–100.  Built-in default: 60
+quality = 60
+
+# Encoder speed preset.  Lower value = smaller output file, slower encode.
+# 4 is a balanced default.  Use 1–2 for archival; 8–10 for fast preview builds.
+# Range: 1–10.  Built-in default: 4
+speed = 4
+
+# ── JPEG XL encoder (requires Cargo feature "jxl") ───────────────────────────
+
+[jxl]
+# Butteraugli perceptual distance.
+# 0.0 = mathematically lossless.
+# 1.0 = visually near-lossless (barely perceptible artefacts) — recommended default.
+# Higher values trade quality for smaller files (e.g. 3.0 for aggressive compression).
+# Ignored when lossless = true.
+# Built-in default: 1.0
+distance = 1.0
+
+# Encoder effort level.  Higher = smaller output file, slower encode.
+# 7 is a good balance between file size and encode time.
+# Range: 1–10.  Built-in default: 7
+effort = 7
+
+# Enable mathematically lossless encoding.
+# When true, the `distance` field above is ignored.
+# Built-in default: false
+lossless = false
