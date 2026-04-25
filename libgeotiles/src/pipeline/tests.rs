@@ -62,7 +62,12 @@ fn grid_2x2() -> FixedGrid {
 }
 
 fn world_bounds() -> Bounds {
-    Bounds { min_x: 0.0, min_y: 0.0, max_x: 10.0, max_y: 10.0 }
+    Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 10.0,
+        max_y: 10.0,
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -72,19 +77,19 @@ fn tiles_grouped_by_chunk_id() {
     // chunk_size=40: rows [0,40) → chunk 0, rows [40,80) → chunk 1.
     // Tiles (0,0) and (1,0) start at row 0  → chunk 0.
     // Tiles (0,1) and (1,1) start at row 50 → chunk 1.
-    let groups = group_tiles_by_chunk(
-        &grid_2x2(),
-        world_bounds(),
-        &gt_100x100(),
-        100,
-        100,
-        0,
-        40,
-    );
+    let groups = group_tiles_by_chunk(&grid_2x2(), world_bounds(), &gt_100x100(), 100, 100, 0, 40);
 
     assert_eq!(groups.len(), 2, "expected two distinct chunk groups");
-    assert_eq!(groups[&0].len(), 2, "chunk 0 should contain the two top-row tiles");
-    assert_eq!(groups[&1].len(), 2, "chunk 1 should contain the two bottom-row tiles");
+    assert_eq!(
+        groups[&0].len(),
+        2,
+        "chunk 0 should contain the two top-row tiles"
+    );
+    assert_eq!(
+        groups[&1].len(),
+        2,
+        "chunk 1 should contain the two bottom-row tiles"
+    );
 }
 
 #[test]
@@ -99,7 +104,11 @@ fn chunk_size_larger_than_dataset_gives_one_chunk() {
         1000,
     );
 
-    assert_eq!(groups.len(), 1, "all tiles should land in chunk 0 when chunk_size >= ds_height");
+    assert_eq!(
+        groups.len(),
+        1,
+        "all tiles should land in chunk 0 when chunk_size >= ds_height"
+    );
     assert_eq!(groups[&0].len(), 4, "all four tiles in chunk 0");
 }
 
@@ -118,26 +127,29 @@ fn non_overlapping_tile_is_excluded() {
     let groups = group_tiles_by_chunk(&grid, world_bounds(), &gt_100x100(), 100, 100, 0, 200);
 
     let total: usize = groups.values().map(|v| v.len()).sum();
-    assert_eq!(total, 2, "only tiles x=0 and x=1 overlap the dataset extent");
+    assert_eq!(
+        total, 2,
+        "only tiles x=0 and x=1 overlap the dataset extent"
+    );
 }
 
 #[test]
 fn chunk_size_1_groups_tiles_by_first_row() {
     // Both top-row tiles start at source row 0; chunk_size=1 → chunk_id = 0/1 = 0.
     // Both bottom-row tiles start at row 50 → chunk_id = 50.
-    let groups = group_tiles_by_chunk(
-        &grid_2x2(),
-        world_bounds(),
-        &gt_100x100(),
-        100,
-        100,
-        0,
-        1,
-    );
+    let groups = group_tiles_by_chunk(&grid_2x2(), world_bounds(), &gt_100x100(), 100, 100, 0, 1);
 
     assert_eq!(groups.len(), 2, "two distinct starting rows → two chunks");
-    assert_eq!(groups[&0].len(), 2, "both tiles starting at row 0 in chunk 0");
-    assert_eq!(groups[&50].len(), 2, "both tiles starting at row 50 in chunk 50");
+    assert_eq!(
+        groups[&0].len(),
+        2,
+        "both tiles starting at row 0 in chunk 0"
+    );
+    assert_eq!(
+        groups[&50].len(),
+        2,
+        "both tiles starting at row 50 in chunk 50"
+    );
 }
 
 #[test]

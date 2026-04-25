@@ -10,6 +10,23 @@ use crate::tile::{ChunkBuffer, PixelWindow};
 
 use crate::Result;
 
+/// Attempt to identify the EPSG code of a dataset's spatial reference.
+///
+/// Returns `None` for an unrecognized or missing CRS rather than an error,
+/// since callers often need to decide what to do when the CRS is unknown.
+pub fn epsg_of(ds: &Dataset) -> Result<Option<u32>> {
+    let mut srs = ds.spatial_ref()?;
+    let _ = srs.auto_identify_epsg();
+    match srs.authority() {
+        Ok(auth) => {
+            let code = auth.split(':').nth(1).and_then(|s| s.parse::<u32>().ok());
+            debug!(authority = %auth, epsg = ?code, "detected CRS");
+            Ok(code)
+        }
+        Err(_) => Ok(None),
+    }
+}
+
 /// Metadata read from a GDAL dataset on open.
 pub struct DatasetInfo {
     pub width: usize,
@@ -64,7 +81,7 @@ pub fn open_dataset(path: &Path) -> Result<(Dataset, DatasetInfo)> {
 /// outlives the returned dataset.
 pub fn warp_to_epsg(src: &Dataset, target_epsg: u32) -> Result<Option<Dataset>> {
     // Compare by EPSG authority code — more reliable than WKT equivalence in GDAL 3+.
-    if matches!(crate::crs::epsg_of(src), Ok(Some(src_epsg)) if src_epsg == target_epsg) {
+    if matches!(epsg_of(src), Ok(Some(src_epsg)) if src_epsg == target_epsg) {
         debug!(target_epsg, "source already in target CRS, skipping warp");
         return Ok(None);
     }
@@ -154,9 +171,9 @@ pub fn source_window(
 
 /// Read `row_count` source rows starting at absolute dataset row `row_start` into RAM.
 ///
-/// All bands are read at full dataset width (so that [`crate::tile::crop_tile`] can
-/// index any column within the row using `window.col`). Data type is converted to `u8`
-/// by GDAL RasterIO; values from non-byte rasters are scaled/clamped automatically.
+/// All bands are read at full dataset width (so that [`crate::backend::cpu::crop_tile`]
+/// can index any column within the row using `window.col`). Data type is converted to
+/// `u8` by GDAL RasterIO; values from non-byte rasters are scaled/clamped automatically.
 pub fn read_chunk(ds: &Dataset, row_start: usize, row_count: usize) -> crate::Result<ChunkBuffer> {
     let (ds_width, _ds_height) = ds.raster_size();
     let band_count = ds.raster_count();

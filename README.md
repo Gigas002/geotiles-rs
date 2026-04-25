@@ -22,7 +22,6 @@ A Rust library for generating map tiles from GeoTIFF sources.
 | Dependency     | Required by    | Notes                                                                                                     |
 | -------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
 | GDAL (≥ 3.x)   | always         | `libgdal-dev` on Debian/Ubuntu, `gdal` on Arch/Homebrew                                                   |
-| libjxl         | `jxl` feature  | `libjxl-dev` on Debian/Ubuntu; or enable the `vendored` sub-feature to compile from source                |
 | libaom / rav1e | `avif` feature | pulled in transitively by the `image/avif` codec (pure Rust via `ravif`) — no extra system package needed |
 
 ---
@@ -31,16 +30,16 @@ A Rust library for generating map tiles from GeoTIFF sources.
 
 All format features are **opt-in**. `png` and the coordinate system features (`geographic`, `mercator`) are on by default.
 
-| Feature      | What it enables                                     | Default |
-| ------------ | --------------------------------------------------- | ------- |
-| `png`        | PNG tile encoding                                   | ✅      |
-| `jpeg`       | JPEG tile encoding                                  | ❌      |
-| `webp`       | WebP tile encoding (lossless only for now)          | ❌      |
-| `avif`       | AVIF tile encoding via `ravif` (pure Rust)          | ❌      |
-| `jxl`        | JPEG XL encoding via `jpegxl-rs` / libjxl (GPL-3.0) | ❌      |
-| `geographic` | Geographic (EPSG:4326) tile coordinate system       | ✅      |
-| `mercator`   | Web Mercator (EPSG:3857) tile coordinate system     | ✅      |
-| `gpu`        | Reserved for future GPU tile pipeline (Phase 7)     | ❌      |
+| Feature      | What it enables                                 | Default |
+| ------------ | ----------------------------------------------- | ------- |
+| `png`        | PNG tile encoding                               | ✅      |
+| `jpeg`       | JPEG tile encoding                              | ❌      |
+| `webp`       | WebP tile encoding (lossless only for now)      | ❌      |
+| `avif`       | AVIF tile encoding via `ravif` (pure Rust)      | ❌      |
+| `jxl`        | JPEG XL encoding via `jxl-encoder` (pure Rust)  | ❌      |
+| `geographic` | Geographic (EPSG:4326) tile coordinate system   | ✅      |
+| `mercator`   | Web Mercator (EPSG:3857) tile coordinate system | ✅      |
+| `gpu`        | Reserved for future GPU tile pipeline (Phase 7) | ❌      |
 
 ---
 
@@ -56,7 +55,7 @@ cargo build -p libgeotiles --features jpeg,webp
 # All stable formats:
 cargo build -p libgeotiles --features png,jpeg,webp,avif
 
-# Everything (includes the GPL-licensed JXL encoder):
+# Everything (all formats, pure Rust):
 cargo build -p libgeotiles --all-features
 ```
 
@@ -68,7 +67,7 @@ cargo build -p libgeotiles --all-features
 # Default features only:
 cargo test -p libgeotiles
 
-# All features (requires libjxl-dev for the jxl feature):
+# All features (pure Rust, no system dependencies beyond GDAL):
 cargo test -p libgeotiles --all-features
 
 # Entire workspace:

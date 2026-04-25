@@ -1,9 +1,7 @@
-//! Per-format encoder options, passed through the pipeline via [`EncodeOptions`].
+//! Per-format encoder options passed to [`crate::encode::encode_tile`].
 //!
 //! Each option struct has a [`Default`] implementation with sensible values so callers
-//! that do not customise encoding still get reasonable output.  The full bundle is stored
-//! on [`crate::GeoTiff`] and individual format options are set via builder methods such as
-//! `GeoTiff::jpeg_options(…)`.
+//! that do not customise encoding still get reasonable output.
 //!
 //! # Future CLI config
 //! These types are intentionally flat so they map cleanly to per-section TOML config, e.g.:
@@ -143,15 +141,7 @@ impl Default for AvifOptions {
 
 // ── JPEG XL ───────────────────────────────────────────────────────────────────
 
-/// Options for JPEG XL encoding via `jpegxl-rs` (wraps `libjxl`).
-///
-/// # System dependency
-/// Requires the `libjxl` C library (`libjxl-dev` on Debian/Ubuntu).
-/// Alternatively, enable the `vendored` sub-feature of `jpegxl-rs` to compile it from source.
-///
-/// # Licence note
-/// `jpegxl-rs` and `jpegxl-sys` are licensed **GPL-3.0-or-later**, which is compatible with
-/// this crate's AGPL-3.0-only licence.
+/// Options for JPEG XL encoding via `jxl-encoder` (pure Rust, no system libraries required).
 #[derive(Debug, Clone, PartialEq)]
 pub struct JxlOptions {
     /// Butteraugli perceptual distance target (lossy quality):
@@ -163,10 +153,9 @@ pub struct JxlOptions {
     ///
     /// Ignored when `lossless = true`.
     pub distance: f32,
-    /// Encoder effort (1–9, higher → smaller output file at the cost of encoding speed).
+    /// Encoder effort (1–10, higher → smaller output file at the cost of encoding speed).
     ///
-    /// Corresponds to `libjxl`'s `effort` parameter:
-    /// 1 = Lightning, 7 = Squirrel (default), 9 = Tortoise.
+    /// Default: 7.
     pub effort: u8,
     /// Use true lossless encoding.
     ///
@@ -189,11 +178,10 @@ impl Default for JxlOptions {
 
 /// All per-format encoder options bundled together.
 ///
-/// Stored on [`crate::GeoTiff`]; set individual format options via builder methods, e.g.:
-/// ```rust,no_run
-/// # use libgeotiles::{GeoTiff, JpegOptions};
-/// GeoTiff::open("input.tif").unwrap()
-///     .jpeg_options(JpegOptions { quality: 90 });
+/// Construct with `Default::default()` and override only what you need:
+/// ```rust
+/// use libgeotiles::{EncodeOptions, JpegOptions};
+/// let opts = EncodeOptions { jpeg: JpegOptions { quality: 90 }, ..Default::default() };
 /// ```
 /// Unset options fall back to their `Default` implementation.
 #[derive(Debug, Clone, PartialEq, Default)]

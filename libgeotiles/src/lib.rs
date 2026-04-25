@@ -1,31 +1,31 @@
+/// Resample backends: CPU (`fast_image_resize`) and optional GPU (`wgpu`).
+pub mod backend;
 /// Tile coordinate types and grid math for EPSG:4326 and EPSG:3857.
 pub mod coords;
-#[doc(hidden)]
-pub mod crs;
-// `encode` is always compiled so that option types and `encode_tile` are unconditionally
-// available (for benchmarks and the `GeoTiff` builder API).  The actual encoding functions
-// inside it are individually gated on their respective Cargo features (`png`, `jpeg`, etc.).
-pub(crate) mod encode;
+/// Tile encoder: PNG, JPEG, WebP, AVIF, JXL dispatch.
+pub mod encode;
+/// Public error types.
 pub mod error;
-#[doc(hidden)]
+/// GDAL dataset operations: open, warp, windowed read, mask alpha, CRS detection.
 pub mod gdal_io;
-mod geotiff;
-#[cfg(any(feature = "geographic", feature = "mercator"))]
-mod pipeline;
-#[doc(hidden)]
+/// Tile enumeration utilities: `TileGrid` trait, `group_tiles_by_chunk`.
+pub mod pipeline;
+/// Core data types: `Format`, `PixelWindow`, `ChunkBuffer`.
 pub mod tile;
 
+pub use backend::ResampleBackend;
 pub use coords::{Bounds, Tile, flip_y};
-/// Semi-public re-export of the raw tile encoder for use in benchmarks.
-///
-/// This is **not** part of the stable public API; it may change without notice.
-#[doc(hidden)]
-pub use encode::encode_tile;
 pub use encode::options::{
     AvifOptions, EncodeOptions, JpegOptions, JxlOptions, PngCompression, PngFilter, PngOptions,
     WebPOptions,
 };
 pub use error::Error;
-pub use geotiff::GeoTiff;
-pub use tile::{Format, ResampleBackend};
+pub use tile::Format;
+
+/// Semi-public re-export of the raw tile encoder for use in benchmarks.
+///
+/// Not part of the stable public API; may change without notice.
+#[doc(hidden)]
+pub use encode::encode_tile;
+
 pub type Result<T> = std::result::Result<T, Error>;

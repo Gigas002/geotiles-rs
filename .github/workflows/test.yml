@@ -31,8 +31,7 @@ jobs:
             curl \
             pkgconf \
             base-devel \
-            gdal \
-            libjxl
+            gdal
 
       - uses: dtolnay/rust-toolchain@stable
 

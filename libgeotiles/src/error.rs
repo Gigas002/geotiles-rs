@@ -28,4 +28,8 @@ pub enum Error {
     /// Band count not supported by the current pipeline (1, 3, or 4 bands expected).
     #[error("unsupported band count: {0}")]
     BadBandCount(usize),
+
+    /// GPU context initialisation or per-tile operation failed.
+    #[error("GPU error: {0}")]
+    Gpu(String),
 }

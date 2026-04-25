@@ -22,8 +22,7 @@ jobs:
             curl \
             pkgconf \
             base-devel \
-            gdal \
-            libjxl
+            gdal
       - uses: dtolnay/rust-toolchain@stable
       - name: Build cache
         uses: Swatinem/rust-cache@v2

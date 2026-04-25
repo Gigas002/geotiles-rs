@@ -1,6 +1,19 @@
 use super::{encode_tile, options::EncodeOptions};
 use crate::tile::Format;
 
+#[test]
+fn encode_options_defaults_are_sane() {
+    let opts = EncodeOptions::default();
+    assert_eq!(opts.jpeg.quality, 85);
+    assert_eq!(opts.avif.quality, 60);
+    assert_eq!(opts.avif.speed, 4);
+    assert!((opts.jxl.distance - 1.0).abs() < f32::EPSILON);
+    assert_eq!(opts.jxl.effort, 7);
+    assert!(!opts.jxl.lossless);
+    assert!(opts.webp.lossless);
+    assert_eq!(opts.webp.quality, 85);
+}
+
 // ── PNG ───────────────────────────────────────────────────────────────────────
 
 #[cfg(feature = "png")]
