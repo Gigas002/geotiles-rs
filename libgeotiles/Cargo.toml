@@ -29,7 +29,7 @@ image = { version = "0.25", default-features = false, optional = true }
 jxl-encoder = { version = "0.3", optional = true }
 fast_image_resize = "6"
 rayon = "1"
-wgpu = { version = "29", optional = true }
+wgpu = { version = "30", optional = true }
 pollster = { version = "0.4", optional = true }
 
 [dev-dependencies]
