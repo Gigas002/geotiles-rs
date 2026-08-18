@@ -244,6 +244,20 @@ fn run_zooms(
                             crop_tile(&chunk, job.window, tile_size, job.dst)?,
                             src_bands,
                         ),
+                        // A tile whose source window exceeds the device's max 2-D texture
+                        // dimension can't go through the GPU path at all (`wgpu` panics on
+                        // texture creation) — only possible at very low zoom levels on very
+                        // large rasters. Fall back to CPU for just those.
+                        #[cfg(feature = "gpu")]
+                        Backend::Gpu(ctx)
+                            if job.window.width as u32 > ctx.max_texture_dim()
+                                || job.window.height as u32 > ctx.max_texture_dim() =>
+                        {
+                            (
+                                crop_tile(&chunk, job.window, tile_size, job.dst)?,
+                                src_bands,
+                            )
+                        }
                         #[cfg(feature = "gpu")]
                         Backend::Gpu(ctx) => (
                             ctx.crop_tile(&chunk, job.window, tile_size, job.dst)?,

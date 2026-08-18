@@ -37,6 +37,7 @@ pub struct GpuContext {
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    max_texture_dim: u32,
 }
 
 impl GpuContext {
@@ -52,6 +53,9 @@ impl GpuContext {
                     power_preference: wgpu::PowerPreference::HighPerformance,
                     compatible_surface: None,
                     force_fallback_adapter: false,
+                    // Native app, not exposing wgpu to untrusted web content — no need to
+                    // bucket reported limits for fingerprinting mitigation.
+                    apply_limit_buckets: false,
                 })
                 .await
                 .map_err(|e| Error::Gpu(e.to_string()))?;
@@ -68,6 +72,9 @@ impl GpuContext {
                 })
                 .await
                 .map_err(|e| Error::Gpu(e.to_string()))?;
+
+            let max_texture_dim = device.limits().max_texture_dimension_2d;
+            info!(max_texture_dim, "GPU limits");
 
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("resize"),
@@ -145,9 +152,19 @@ impl GpuContext {
                 pipeline,
                 bgl,
                 sampler,
+                max_texture_dim,
             })
         }
         .block_on()
+    }
+
+    /// The device's maximum 2-D texture dimension. A tile job whose source
+    /// [`PixelWindow`] exceeds this in either dimension cannot go through
+    /// [`crop_tile`](Self::crop_tile) — `wgpu` will panic on texture creation. Only
+    /// possible at very low zoom levels on very large (wider/taller than ~8k px) rasters;
+    /// callers should route such jobs to the CPU backend instead.
+    pub fn max_texture_dim(&self) -> u32 {
+        self.max_texture_dim
     }
 
     /// Crop the pixel window from `chunk`, resize it on the GPU, and place it at `dst`
@@ -157,6 +174,9 @@ impl GpuContext {
     /// area outside `dst` is zero-filled (fully transparent) — this is the part of the
     /// tile the source dataset does not cover. Source bands are expanded to RGBA before
     /// upload regardless of source band count.
+    ///
+    /// `window` must fit within [`max_texture_dim`](Self::max_texture_dim) in both
+    /// dimensions.
     pub fn crop_tile(
         &self,
         chunk: &ChunkBuffer,
@@ -292,7 +312,10 @@ impl GpuContext {
             .expect("map_async channel dropped")
             .map_err(|e| Error::Gpu(e.to_string()))?;
 
-        let mapped = staging.slice(..).get_mapped_range();
+        let mapped = staging
+            .slice(..)
+            .get_mapped_range()
+            .map_err(|e| Error::Gpu(e.to_string()))?;
 
         // Zero-filled (fully transparent) canvas; `dst` is embedded at its true position,
         // leaving the rest of the tile blank when the source dataset doesn't reach it.
