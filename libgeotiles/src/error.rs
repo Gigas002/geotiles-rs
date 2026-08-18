@@ -14,6 +14,9 @@ pub enum Error {
     #[error("resize error: {0}")]
     Resize(#[from] fast_image_resize::ResizeError),
 
+    #[error("crop box error: {0}")]
+    CropBox(#[from] fast_image_resize::CropBoxError),
+
     /// Encoding a tile to the requested format failed.
     #[error("encode error: {0}")]
     Encode(String),

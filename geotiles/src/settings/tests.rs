@@ -16,6 +16,7 @@ fn minimal_cli() -> crate::cli::Cli {
         tilesize: None,
         tmr: None,
         chunk_size: None,
+        backend: None,
         config: None,
     }
 }
@@ -74,6 +75,13 @@ fn parse_crs_all_aliases() {
     assert_eq!(super::parse_crs("EPSG:3857").unwrap(), Crs::Mercator);
     assert_eq!(super::parse_crs("3857").unwrap(), Crs::Mercator);
     assert!(super::parse_crs("unknown").is_err());
+}
+
+#[test]
+fn parse_backend_cpu_and_unknown() {
+    assert_eq!(super::parse_backend("cpu").unwrap(), ResampleBackend::Cpu);
+    assert_eq!(super::parse_backend("CPU").unwrap(), ResampleBackend::Cpu);
+    assert!(super::parse_backend("unknown").is_err());
 }
 
 #[test]

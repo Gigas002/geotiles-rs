@@ -16,7 +16,7 @@
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use libgeotiles::backend::cpu::crop_tile;
-use libgeotiles::tile::{ChunkBuffer, PixelWindow};
+use libgeotiles::tile::{ChunkBuffer, DstRect, PixelWindow};
 use std::hint::black_box;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ fn bench_tile_resample_cpu(c: &mut Criterion) {
             |b, (ch, w)| {
                 b.iter_batched(
                     || (),
-                    |_| crop_tile(black_box(ch), black_box(*w), TILE).unwrap(),
+                    |_| crop_tile(black_box(ch), black_box(*w), TILE, DstRect::full(TILE)).unwrap(),
                     BatchSize::SmallInput,
                 );
             },
@@ -108,7 +108,10 @@ fn bench_tile_resample_gpu(c: &mut Criterion) {
             |b, (ch, w)| {
                 b.iter_batched(
                     || (),
-                    |_| ctx.crop_tile(black_box(ch), black_box(*w), TILE).unwrap(),
+                    |_| {
+                        ctx.crop_tile(black_box(ch), black_box(*w), TILE, DstRect::full(TILE))
+                            .unwrap()
+                    },
                     BatchSize::SmallInput,
                 );
             },

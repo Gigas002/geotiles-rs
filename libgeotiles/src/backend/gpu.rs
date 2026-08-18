@@ -25,7 +25,7 @@ use pollster::FutureExt as _;
 use tracing::{debug, info};
 
 use crate::error::Error;
-use crate::tile::{ChunkBuffer, PixelWindow};
+use crate::tile::{ChunkBuffer, DstRect, PixelWindow};
 
 const SHADER_SRC: &str = include_str!("shaders/resize.wgsl");
 const WORKGROUP: u32 = 8;
@@ -150,15 +150,19 @@ impl GpuContext {
         .block_on()
     }
 
-    /// Crop the pixel window from `chunk` and resize to `tile_size × tile_size` on the GPU.
+    /// Crop the pixel window from `chunk`, resize it on the GPU, and place it at `dst`
+    /// within a `tile_size × tile_size` canvas.
     ///
-    /// Always returns 4-band RGBA bytes (`tile_size * tile_size * 4` elements).
-    /// Source bands are expanded to RGBA before upload regardless of source band count.
+    /// Always returns 4-band RGBA bytes (`tile_size * tile_size * 4` elements). Canvas
+    /// area outside `dst` is zero-filled (fully transparent) — this is the part of the
+    /// tile the source dataset does not cover. Source bands are expanded to RGBA before
+    /// upload regardless of source band count.
     pub fn crop_tile(
         &self,
         chunk: &ChunkBuffer,
         window: PixelWindow,
         tile_size: u32,
+        dst: DstRect,
     ) -> crate::Result<Vec<u8>> {
         let bands = chunk.band_count();
         let src_w = window.width as u32;
@@ -172,6 +176,7 @@ impl GpuContext {
             src_h,
             bands,
             tile_size,
+            ?dst,
             "gpu::crop_tile"
         );
 
@@ -207,7 +212,7 @@ impl GpuContext {
             },
         );
 
-        let out_pixels = tile_size * tile_size;
+        let out_pixels = dst.width * dst.height;
         let out_buf_size = (out_pixels * 4) as u64;
         let out_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("out_buf"),
@@ -216,7 +221,7 @@ impl GpuContext {
             mapped_at_creation: false,
         });
 
-        let dims_data: [u32; 4] = [tile_size, tile_size, 0, 0];
+        let dims_data: [u32; 4] = [dst.width, dst.height, 0, 0];
         let dims_bytes: Vec<u8> = dims_data.iter().flat_map(|v| v.to_le_bytes()).collect();
         let dims_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("dims_uniform"),
@@ -262,8 +267,9 @@ impl GpuContext {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            let wg = tile_size.div_ceil(WORKGROUP);
-            pass.dispatch_workgroups(wg, wg, 1);
+            let wg_x = dst.width.div_ceil(WORKGROUP);
+            let wg_y = dst.height.div_ceil(WORKGROUP);
+            pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -287,18 +293,27 @@ impl GpuContext {
             .map_err(|e| Error::Gpu(e.to_string()))?;
 
         let mapped = staging.slice(..).get_mapped_range();
-        let mut out = Vec::with_capacity((out_pixels * 4) as usize);
-        for chunk4 in mapped.chunks_exact(4) {
-            let packed = u32::from_le_bytes([chunk4[0], chunk4[1], chunk4[2], chunk4[3]]);
-            out.push((packed & 0xFF) as u8);
-            out.push(((packed >> 8) & 0xFF) as u8);
-            out.push(((packed >> 16) & 0xFF) as u8);
-            out.push(((packed >> 24) & 0xFF) as u8);
+
+        // Zero-filled (fully transparent) canvas; `dst` is embedded at its true position,
+        // leaving the rest of the tile blank when the source dataset doesn't reach it.
+        let mut canvas = vec![0u8; (tile_size * tile_size * 4) as usize];
+        for row in 0..dst.height {
+            let src_row_start = (row * dst.width * 4) as usize;
+            let src_row = &mapped[src_row_start..src_row_start + (dst.width * 4) as usize];
+            let dst_row_start = (((dst.y + row) * tile_size + dst.x) * 4) as usize;
+            for (i, packed) in src_row.chunks_exact(4).enumerate() {
+                let packed = u32::from_le_bytes([packed[0], packed[1], packed[2], packed[3]]);
+                let out_base = dst_row_start + i * 4;
+                canvas[out_base] = (packed & 0xFF) as u8;
+                canvas[out_base + 1] = ((packed >> 8) & 0xFF) as u8;
+                canvas[out_base + 2] = ((packed >> 16) & 0xFF) as u8;
+                canvas[out_base + 3] = ((packed >> 24) & 0xFF) as u8;
+            }
         }
         drop(mapped);
         staging.unmap();
 
-        Ok(out)
+        Ok(canvas)
     }
 }
 
