@@ -6,10 +6,10 @@ pub mod coords;
 pub mod encode;
 /// Public error types.
 pub mod error;
-/// GDAL dataset operations: open, warp, windowed read, mask alpha, CRS detection.
-pub mod gdal_io;
 /// Tile enumeration utilities: `TileGrid` trait, `group_tiles_by_chunk`.
 pub mod pipeline;
+/// Pure-Rust TIFF dataset operations: open, windowed/chunked read, geotransform.
+pub mod tiff_io;
 /// Core data types: `Format`, `PixelWindow`, `ChunkBuffer`.
 pub mod tile;
 

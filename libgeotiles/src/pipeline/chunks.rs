@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use tracing::debug;
 
 use crate::coords::{Bounds, Tile};
-use crate::gdal_io::source_window;
+use crate::tiff_io::source_window;
 use crate::tile::PixelWindow;
 
 use super::TileGrid;

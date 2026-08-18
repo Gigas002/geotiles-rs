@@ -21,8 +21,8 @@ jxl = ["dep:jxl-encoder"]
 gpu = ["dep:wgpu", "dep:pollster"]
 
 [dependencies]
-gdal = { workspace = true }
-gdal-sys = { workspace = true }
+tiff = { workspace = true }
+geotiff = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 image = { version = "0.25", default-features = false, optional = true }

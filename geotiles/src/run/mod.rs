@@ -3,7 +3,6 @@
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use std::path::Path;
 
-use gdal::Dataset;
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use libgeotiles::Format;
 #[cfg(any(feature = "geographic", feature = "mercator"))]
@@ -14,12 +13,12 @@ use libgeotiles::coords::{Tile, flip_y};
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use libgeotiles::encode::encode_tile;
 #[cfg(any(feature = "geographic", feature = "mercator"))]
-use libgeotiles::gdal_io::{append_mask_alpha, read_chunk};
-use libgeotiles::gdal_io::{open_dataset, warp_to_epsg};
-#[cfg(any(feature = "geographic", feature = "mercator"))]
 use libgeotiles::pipeline::TileGrid;
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use libgeotiles::pipeline::chunks::group_tiles_by_chunk;
+#[cfg(any(feature = "geographic", feature = "mercator"))]
+use libgeotiles::tiff_io::read_chunk;
+use libgeotiles::tiff_io::{RasterDataset, open_dataset};
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 use rayon::prelude::*;
 #[cfg(any(feature = "geographic", feature = "mercator"))]
@@ -31,39 +30,36 @@ use crate::settings::{Crs, Settings};
 // -- Main entry point ---------------------------------------------------------
 
 /// Execute the full tiling pipeline for the given `settings`.
+///
+/// No reprojection or nodata/mask handling is performed: the input is read exactly as it is
+/// on disk, so it must already be an 8-bit, chunky-interleaved GeoTIFF in the CRS selected by
+/// `settings.crs` (`--crs`). Pre-process the input with any GeoTIFF-capable tool first if
+/// either is needed.
 pub fn run(settings: &Settings) -> anyhow::Result<()> {
     let _span = info_span!("run", input = %settings.input.display()).entered();
 
-    let (src_ds, _src_info) = open_dataset(&settings.input)?;
+    let (mut work_ds, info) = open_dataset(&settings.input)?;
 
-    let target_epsg = match settings.crs {
-        Crs::Geographic => 4326u32,
-        Crs::Mercator => 3857u32,
-    };
-
-    // Warp to target CRS if needed; the warped VRT stays alive until end of scope.
-    let warped_opt = warp_to_epsg(&src_ds, target_epsg)?;
-    let work_ds = warped_opt.as_ref().unwrap_or(&src_ds);
-
-    let (ds_w, ds_h) = work_ds.raster_size();
-    let gt = work_ds.geo_transform()?;
+    let ds_w = info.width;
+    let ds_h = info.height;
+    let gt = info.geo_transform;
 
     let ds_bounds = dataset_bounds(&gt, ds_w, ds_h);
 
     info!(
-        target_epsg,
         ds_w,
         ds_h,
+        band_count = info.band_count,
         min_x = ds_bounds.min_x,
         min_y = ds_bounds.min_y,
         max_x = ds_bounds.max_x,
         max_y = ds_bounds.max_y,
-        "working dataset ready"
+        "dataset ready"
     );
 
     std::fs::create_dir_all(&settings.output)?;
 
-    dispatch_crs(settings, work_ds, &gt, ds_bounds, ds_w, ds_h)?;
+    dispatch_crs(settings, &mut work_ds, &gt, ds_bounds, ds_w, ds_h)?;
 
     if settings.tmr {
         crate::tmr::write(&settings.output, settings, ds_bounds)?;
@@ -76,7 +72,7 @@ pub fn run(settings: &Settings) -> anyhow::Result<()> {
 
 fn dispatch_crs(
     settings: &Settings,
-    work_ds: &Dataset,
+    work_ds: &mut RasterDataset,
     gt: &[f64; 6],
     ds_bounds: Bounds,
     ds_w: usize,
@@ -90,7 +86,7 @@ fn dispatch_crs(
 
 fn dispatch_geographic(
     settings: &Settings,
-    work_ds: &Dataset,
+    work_ds: &mut RasterDataset,
     gt: &[f64; 6],
     ds_bounds: Bounds,
     ds_w: usize,
@@ -111,7 +107,7 @@ fn dispatch_geographic(
 
 fn dispatch_mercator(
     settings: &Settings,
-    work_ds: &Dataset,
+    work_ds: &mut RasterDataset,
     gt: &[f64; 6],
     ds_bounds: Bounds,
     ds_w: usize,
@@ -135,7 +131,7 @@ fn dispatch_mercator(
 #[cfg(any(feature = "geographic", feature = "mercator"))]
 fn run_zooms(
     settings: &Settings,
-    work_ds: &Dataset,
+    work_ds: &mut RasterDataset,
     grid: &dyn TileGrid,
     gt: &[f64; 6],
     ds_bounds: Bounds,
@@ -185,8 +181,7 @@ fn run_zooms(
                 );
             }
             debug!(row_start, row_count, "reading chunk");
-            let mut chunk = read_chunk(work_ds, row_start, row_count)?;
-            append_mask_alpha(work_ds, &mut chunk, row_start, row_count)?;
+            let chunk = read_chunk(work_ds, row_start, row_count)?;
 
             let tile_size = settings.tile_size;
             let format = settings.format;

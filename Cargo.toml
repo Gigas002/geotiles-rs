@@ -11,7 +11,7 @@ repository = "https://github.com/Gigas002/geotiles-rs"
 homepage = "https://github.com/Gigas002/geotiles-rs"
 
 [workspace.dependencies]
-gdal = "0.19"
-gdal-sys = "0.12"
+tiff = { version = "0.10", features = ["zstd"] }
+geotiff = { git = "https://github.com/georust/geotiff", branch = "main" }
 thiserror = "2"
 tracing = "0.1"
