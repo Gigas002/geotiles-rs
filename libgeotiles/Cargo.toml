@@ -22,7 +22,6 @@ gpu = ["dep:wgpu", "dep:pollster"]
 
 [dependencies]
 tiff = { workspace = true }
-geotiff = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 image = { version = "0.25", default-features = false, optional = true }

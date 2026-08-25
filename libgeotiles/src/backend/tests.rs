@@ -141,7 +141,7 @@ mod gpu_tests {
             .crop_tile(&chunk, win, 64, DstRect::full(64))
             .expect("crop_tile single band");
         assert_eq!(result.len(), 64 * 64 * 4);
-        for pixel in result.chunks_exact(4) {
+        for pixel in result.as_chunks::<4>().0 {
             assert_eq!(pixel[3], 255, "alpha should be 255 for single-band source");
         }
     }

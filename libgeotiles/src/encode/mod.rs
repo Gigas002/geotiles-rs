@@ -247,7 +247,7 @@ fn strip_alpha(pixels: &[u8], src_bands: usize) -> Vec<u8> {
 #[cfg(any(feature = "webp", feature = "avif"))]
 fn la8_to_rgba(pixels: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(pixels.len() * 2);
-    for px in pixels.chunks_exact(2) {
+    for px in pixels.as_chunks::<2>().0 {
         out.extend_from_slice(&[px[0], px[0], px[0], px[1]]);
     }
     out

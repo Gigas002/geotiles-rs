@@ -2,7 +2,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-use geotiff::{CoordinateTransform, DecoderExt};
 use tiff::decoder::{ChunkType, Decoder, DecodingResult};
 use tiff::tags::Tag;
 use tracing::{debug, info};
@@ -115,44 +114,61 @@ pub fn open_dataset(path: &Path) -> Result<(RasterDataset, DatasetInfo)> {
 }
 
 /// Derive a GDAL-style 6-element affine geo-transform from the GeoTIFF's own georeferencing
-/// tags, via `geotiff`'s [`DecoderExt`].
+/// tags (`ModelTransformationTag`, or `ModelTiepointTag` + `ModelPixelScaleTag`).
+///
+/// Ref: <https://docs.ogc.org/is/19-008r4/19-008r4.html#_raster_to_model_coordinate_transformation_requirements>
 fn geo_transform_of<R: std::io::Read + std::io::Seek>(
     decoder: &mut Decoder<R>,
 ) -> Result<[f64; 6]> {
-    match decoder.coordinate_transform()? {
-        None => Err(Error::MissingGeoreferencing),
-        Some(CoordinateTransform::AffineTransform { transform, .. }) => {
-            // `transform` maps (raster_x, raster_y) -> (model_x, model_y):
-            //   model_x = raster_x * t[0] + raster_y * t[1] + t[2]
-            //   model_y = raster_x * t[3] + raster_y * t[4] + t[5]
-            // Re-index into the GDAL convention [x0, px, rx, y0, ry, py].
-            Ok([
-                transform[2],
-                transform[0],
-                transform[1],
-                transform[5],
-                transform[3],
-                transform[4],
-            ])
-        }
-        Some(CoordinateTransform::TiePointAndPixelScale {
-            raster_point,
-            model_point,
-            pixel_scale,
-        }) => {
-            // Single tie point + pixel scale: the common case for north-up GeoTIFFs.
-            let px = pixel_scale.x;
-            let py = -pixel_scale.y;
-            Ok([
-                model_point.x - raster_point.x * px,
-                px,
-                0.0,
-                model_point.y - raster_point.y * py,
-                0.0,
-                py,
-            ])
-        }
+    let transformation_matrix = decoder
+        .find_tag(Tag::ModelTransformationTag)?
+        .map(|value| value.into_f64_vec())
+        .transpose()?;
+
+    if let Some(matrix) = transformation_matrix {
+        let matrix: [f64; 16] = matrix
+            .try_into()
+            .map_err(|_| Error::Unsupported("ModelTransformationTag must have 16 values".into()))?;
+        // `matrix` maps (raster_x, raster_y) -> (model_x, model_y):
+        //   model_x = raster_x * m[0] + raster_y * m[1] + m[3]
+        //   model_y = raster_x * m[4] + raster_y * m[5] + m[7]
+        // Re-index into the GDAL convention [x0, px, rx, y0, ry, py].
+        return Ok([
+            matrix[3], matrix[0], matrix[1], matrix[7], matrix[4], matrix[5],
+        ]);
     }
+
+    let pixel_scale = decoder
+        .find_tag(Tag::ModelPixelScaleTag)?
+        .map(|value| value.into_f64_vec())
+        .transpose()?;
+    let tie_points = decoder
+        .find_tag(Tag::ModelTiepointTag)?
+        .map(|value| value.into_f64_vec())
+        .transpose()?;
+
+    let (Some(pixel_scale), Some(tie_points)) = (pixel_scale, tie_points) else {
+        return Err(Error::MissingGeoreferencing);
+    };
+    if pixel_scale.len() != 3 || tie_points.len() < 6 {
+        return Err(Error::Unsupported(
+            "ModelPixelScaleTag must have 3 values and ModelTiepointTag at least 6".into(),
+        ));
+    }
+
+    // Single tie point + pixel scale: the common case for north-up GeoTIFFs.
+    let (raster_x, raster_y) = (tie_points[0], tie_points[1]);
+    let (model_x, model_y) = (tie_points[3], tie_points[4]);
+    let px = pixel_scale[0];
+    let py = -pixel_scale[1];
+    Ok([
+        model_x - raster_x * px,
+        px,
+        0.0,
+        model_y - raster_y * py,
+        0.0,
+        py,
+    ])
 }
 
 /// Compute the source-pixel window corresponding to `tile_geo` (in dataset CRS units).

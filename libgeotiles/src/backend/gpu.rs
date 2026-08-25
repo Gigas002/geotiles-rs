@@ -324,8 +324,8 @@ impl GpuContext {
             let src_row_start = (row * dst.width * 4) as usize;
             let src_row = &mapped[src_row_start..src_row_start + (dst.width * 4) as usize];
             let dst_row_start = (((dst.y + row) * tile_size + dst.x) * 4) as usize;
-            for (i, packed) in src_row.chunks_exact(4).enumerate() {
-                let packed = u32::from_le_bytes([packed[0], packed[1], packed[2], packed[3]]);
+            for (i, packed) in src_row.as_chunks::<4>().0.iter().enumerate() {
+                let packed = u32::from_le_bytes(*packed);
                 let out_base = dst_row_start + i * 4;
                 canvas[out_base] = (packed & 0xFF) as u8;
                 canvas[out_base + 1] = ((packed >> 8) & 0xFF) as u8;
