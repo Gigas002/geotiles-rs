@@ -22,8 +22,6 @@ gpu = ["libgeotiles/gpu"]
 
 [dependencies]
 libgeotiles = { path = "../libgeotiles" }
-# gdal is needed to pass &Dataset to libgeotiles I/O helpers.
-gdal = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }

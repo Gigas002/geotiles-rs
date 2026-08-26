@@ -48,6 +48,10 @@ pub struct Cli {
     #[arg(long, value_name = "N")]
     pub chunk_size: Option<usize>,
 
+    /// Tile resample backend: `cpu` (default) or `gpu` (requires the `gpu` build feature).
+    #[arg(long, value_name = "BACKEND")]
+    pub backend: Option<String>,
+
     /// Path to a TOML config file.  Defaults to
     /// `$XDG_CONFIG_HOME/geotiles/config.toml`.
     #[arg(long, value_name = "PATH")]

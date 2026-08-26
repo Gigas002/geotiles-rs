@@ -77,7 +77,16 @@ fn tiles_grouped_by_chunk_id() {
     // chunk_size=40: rows [0,40) → chunk 0, rows [40,80) → chunk 1.
     // Tiles (0,0) and (1,0) start at row 0  → chunk 0.
     // Tiles (0,1) and (1,1) start at row 50 → chunk 1.
-    let groups = group_tiles_by_chunk(&grid_2x2(), world_bounds(), &gt_100x100(), 100, 100, 0, 40);
+    let groups = group_tiles_by_chunk(
+        &grid_2x2(),
+        world_bounds(),
+        &gt_100x100(),
+        100,
+        100,
+        0,
+        40,
+        256,
+    );
 
     assert_eq!(groups.len(), 2, "expected two distinct chunk groups");
     assert_eq!(
@@ -102,6 +111,7 @@ fn chunk_size_larger_than_dataset_gives_one_chunk() {
         100,
         0,
         1000,
+        256,
     );
 
     assert_eq!(
@@ -124,7 +134,7 @@ fn non_overlapping_tile_is_excluded() {
         origin_y: 10.0,
     };
 
-    let groups = group_tiles_by_chunk(&grid, world_bounds(), &gt_100x100(), 100, 100, 0, 200);
+    let groups = group_tiles_by_chunk(&grid, world_bounds(), &gt_100x100(), 100, 100, 0, 200, 256);
 
     let total: usize = groups.values().map(|v| v.len()).sum();
     assert_eq!(
@@ -137,7 +147,16 @@ fn non_overlapping_tile_is_excluded() {
 fn chunk_size_1_groups_tiles_by_first_row() {
     // Both top-row tiles start at source row 0; chunk_size=1 → chunk_id = 0/1 = 0.
     // Both bottom-row tiles start at row 50 → chunk_id = 50.
-    let groups = group_tiles_by_chunk(&grid_2x2(), world_bounds(), &gt_100x100(), 100, 100, 0, 1);
+    let groups = group_tiles_by_chunk(
+        &grid_2x2(),
+        world_bounds(),
+        &gt_100x100(),
+        100,
+        100,
+        0,
+        1,
+        256,
+    );
 
     assert_eq!(groups.len(), 2, "two distinct starting rows → two chunks");
     assert_eq!(
@@ -164,6 +183,7 @@ fn chunk_id_matches_row_div_chunk_size() {
         100,
         0,
         chunk_size,
+        256,
     );
 
     for (chunk_id, jobs) in &groups {

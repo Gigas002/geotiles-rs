@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use libgeotiles::{
     AvifOptions, EncodeOptions, Format, JpegOptions, JxlOptions, PngCompression, PngFilter,
-    PngOptions, WebPOptions,
+    PngOptions, ResampleBackend, WebPOptions,
 };
 
 use crate::cli::{Cli, ZoomRange};
@@ -64,6 +64,12 @@ pub struct Settings {
     pub tmr: bool,
     /// Maximum source-pixel rows held in RAM at once (chunked I/O budget).
     pub chunk_size: usize,
+    /// Tile resample backend (CPU or GPU).
+    #[cfg_attr(
+        not(any(feature = "geographic", feature = "mercator")),
+        allow(dead_code)
+    )]
+    pub backend: ResampleBackend,
     /// Per-format encoder options derived from the config file.
     #[cfg_attr(
         not(any(feature = "geographic", feature = "mercator")),
@@ -100,6 +106,7 @@ impl Settings {
         let tile_size = cli.tilesize.or(config.tilesize).unwrap_or(256);
         let tmr = cli.tmr.or(config.tmr).unwrap_or(false);
         let chunk_size = cli.chunk_size.or(config.chunk_size).unwrap_or(512);
+        let backend = parse_backend(cli.backend.as_deref().unwrap_or("cpu"))?;
         let encode_opts = build_encode_opts(config);
 
         Ok(Self {
@@ -114,8 +121,26 @@ impl Settings {
             tile_size,
             tmr,
             chunk_size,
+            backend,
             encode_opts,
         })
+    }
+}
+
+/// Parse a `--backend` string into a [`ResampleBackend`].
+///
+/// Returns an error for `"gpu"` when the crate was not built with the `gpu` feature, so the
+/// failure is reported at startup rather than as a confusing later error.
+fn parse_backend(s: &str) -> anyhow::Result<ResampleBackend> {
+    match s.trim().to_lowercase().as_str() {
+        "cpu" => Ok(ResampleBackend::Cpu),
+        #[cfg(feature = "gpu")]
+        "gpu" => Ok(ResampleBackend::Gpu),
+        #[cfg(not(feature = "gpu"))]
+        "gpu" => anyhow::bail!(
+            "backend 'gpu' requested but this binary was not built with the 'gpu' feature"
+        ),
+        other => anyhow::bail!("unknown backend '{}'; supported: cpu, gpu", other),
     }
 }
 
