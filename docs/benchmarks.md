@@ -61,7 +61,7 @@ Zoom ranges were chosen per-dataset to land in a comparable tile-count order of 
 | Total output size | 987.8 MB | 900.9 MB | 1859.0 MB |
 | Avg tile size | 48.4 KB | 44.2 KB | 91.1 KB |
 
-All three are within ~2% of each other on wall time — effectively tied. `geotiles` CPU uses the least memory by a wide margin (4x less than GTiff2Tiles). GTiff2Tiles' output PNGs are roughly 2x larger than either `geotiles` backend's for the same visual content (different PNG encoder/compression defaults — NetVips vs the Rust `image`/`png` crate). GPU is marginally faster than CPU here but at 17.8% average utilization — see the [perf-comparison discussion](#why-gpu-doesnt-win) below.
+All three are within ~2% of each other on wall time — effectively tied. `geotiles` CPU uses the least memory by a wide margin (4x less than GTiff2Tiles). GTiff2Tiles' PNG outputs are roughly 2x larger than either `geotiles` backend's for the same visual content (different PNG encoder/compression defaults — NetVips vs the Rust `image`/`png` crate). GPU is marginally faster than CPU here but at 17.8% average utilization — see the [perf-comparison discussion](#why-gpu-doesnt-win) below.
 
 ## JPEG XL — small dataset (zoom 0–18, 20,890 tiles)
 
