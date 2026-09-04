@@ -2,6 +2,8 @@
 
 A Rust library for generating map tiles from GeoTIFF sources.
 
+Rewrite of my old [GTiff2Tiles](https://github.com/Gigas002/GTiff2Tiles) project, for diff see (docs/benchmarks.md).
+
 ---
 
 ## System dependencies
