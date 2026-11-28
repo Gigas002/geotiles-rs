@@ -46,6 +46,12 @@ pub fn run(settings: &Settings) -> anyhow::Result<()> {
     info!(tiles = stats.tiles, "tiles written");
 
     if settings.tmr {
+        if !settings.tms {
+            tracing::warn!(
+                "tilemapresource.xml describes TMS (south-origin) rows but tiles were written \
+                 in XYZ order; pass --tms true for a consistent tile set"
+            );
+        }
         crate::tmr::write(&settings.output, settings, crs, bounds)?;
     }
     Ok(())

@@ -99,7 +99,7 @@ impl Settings {
             .map(parse_backend)
             .transpose()?
             .unwrap_or_default();
-        let encode_opts = build_encode_opts(config);
+        let encode_opts = build_encode_opts(config)?;
 
         Ok(Self {
             input: cli.input.clone(),
@@ -172,31 +172,40 @@ fn parse_crs(s: &str) -> anyhow::Result<Crs> {
 
 /// Build the complete [`EncodeOptions`] struct from per-format config sections.
 ///
-/// Each section falls back to sensible defaults when the config key is absent.
-fn build_encode_opts(cfg: &Config) -> EncodeOptions {
+/// Each section falls back to sensible defaults when the config key is absent; an
+/// unrecognised value is an error rather than a silent default.
+fn build_encode_opts(cfg: &Config) -> anyhow::Result<EncodeOptions> {
     let png = PngOptions {
         compression: cfg
             .png
             .compression
             .as_deref()
             .map(|s| match s {
-                "fast" => PngCompression::Fast,
-                "best" => PngCompression::Best,
-                _ => PngCompression::Default,
+                "default" => Ok(PngCompression::Default),
+                "fast" => Ok(PngCompression::Fast),
+                "best" => Ok(PngCompression::Best),
+                other => anyhow::bail!(
+                    "unknown [png] compression '{other}'; supported: default, fast, best"
+                ),
             })
+            .transpose()?
             .unwrap_or_default(),
         filter: cfg
             .png
             .filter
             .as_deref()
             .map(|s| match s {
-                "none" | "nofilter" => PngFilter::NoFilter,
-                "sub" => PngFilter::Sub,
-                "up" => PngFilter::Up,
-                "avg" | "average" => PngFilter::Avg,
-                "paeth" => PngFilter::Paeth,
-                _ => PngFilter::Adaptive,
+                "adaptive" => Ok(PngFilter::Adaptive),
+                "none" | "nofilter" => Ok(PngFilter::NoFilter),
+                "sub" => Ok(PngFilter::Sub),
+                "up" => Ok(PngFilter::Up),
+                "avg" | "average" => Ok(PngFilter::Avg),
+                "paeth" => Ok(PngFilter::Paeth),
+                other => anyhow::bail!(
+                    "unknown [png] filter '{other}'; supported: adaptive, none, sub, up, avg, paeth"
+                ),
             })
+            .transpose()?
             .unwrap_or_default(),
     };
 
@@ -220,13 +229,13 @@ fn build_encode_opts(cfg: &Config) -> EncodeOptions {
         lossless: cfg.jxl.lossless.unwrap_or(false),
     };
 
-    EncodeOptions {
+    Ok(EncodeOptions {
         png,
         jpeg,
         webp,
         avif,
         jxl,
-    }
+    })
 }
 
 #[cfg(test)]

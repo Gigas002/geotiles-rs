@@ -95,3 +95,16 @@ fn parse_format_all_variants() {
     assert_eq!(super::parse_format("jxl").unwrap(), Format::Jxl);
     assert!(super::parse_format("tif").is_err());
 }
+
+#[test]
+fn unknown_png_options_are_errors() {
+    let mut config = crate::config::Config::default();
+    config.png.compression = Some(String::from("max"));
+    assert!(Settings::resolve(&minimal_cli(), &config).is_err());
+
+    let mut config = crate::config::Config::default();
+    config.png.filter = Some(String::from("paeth"));
+    config.png.compression = Some(String::from("best"));
+    let s = Settings::resolve(&minimal_cli(), &config).unwrap();
+    assert_eq!(s.encode_opts.png.filter, libgeotiles::PngFilter::Paeth);
+}
