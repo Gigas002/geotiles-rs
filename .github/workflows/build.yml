@@ -36,7 +36,6 @@ jobs:
           pacman -Syu --noconfirm \
             pkgconf \
             base-devel \
-            gdal \
             curl
 
       - uses: dtolnay/rust-toolchain@stable
