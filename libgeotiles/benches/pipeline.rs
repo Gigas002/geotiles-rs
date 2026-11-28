@@ -1,133 +1,69 @@
-//! Benchmarks for the tile resample (crop + resize) hot path — CPU vs GPU.
+//! Benchmarks for the per-tile resample step in isolation (no I/O, no encoding).
 //!
-//! These benchmarks measure the per-tile crop + resize step in isolation,
-//! independent of GDAL I/O or encoding.  The input is a synthetic
-//! `ChunkBuffer` of known dimensions; the output is a `tile_size × tile_size`
-//! pixel buffer ready for encoding.
-//!
-//! Run CPU-only (default features):
 //!   cargo bench -p libgeotiles --bench pipeline
+//!   cargo bench -p libgeotiles --bench pipeline --features gpu   # adds GPU rows
 //!
-//! Run with GPU backend (requires GPU hardware or software renderer like lavapipe):
-//!   cargo bench -p libgeotiles --bench pipeline --features gpu
-//!
-//! Compare GPU vs CPU results: Criterion stores HTML reports in `target/criterion/`.
-//! Snapshot baselines in `docs/benchmarks/` when a path is first stabilised (see §6.6).
+//! Criterion writes HTML reports to `target/criterion/`.
 
-use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use libgeotiles::backend::cpu::crop_tile;
-use libgeotiles::tile::{ChunkBuffer, DstRect, PixelWindow};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use libgeotiles::plan::{DstRect, SrcRect, TileJob};
+use libgeotiles::{CpuResampler, Resampler, RowBlock, Tile};
 use std::hint::black_box;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const TILE: u32 = 256;
 
-fn synthetic_chunk(bands: usize, src_w: usize, src_h: usize) -> ChunkBuffer {
-    let band_data: Vec<Vec<u8>> = (0..bands)
-        .map(|b| {
-            (0..src_w * src_h)
-                .map(|i| ((i + b * 37) % 251) as u8)
-                .collect()
-        })
-        .collect();
-    ChunkBuffer {
-        band_data,
-        ds_width: src_w,
+/// Cases: (label, bands, source window side). The block is 4× wider than the window so
+/// the resampler works inside a larger row block, as in the real pipeline.
+const CASES: [(&str, usize, usize); 4] = [
+    ("rgb_256_to_256", 3, 256),
+    ("rgb_512_to_256", 3, 512),
+    ("rgba_512_to_256", 4, 512),
+    ("rgb_4096_to_256", 3, 4096),
+];
+
+fn block(bands: usize, side: usize) -> RowBlock {
+    let width = side * 4;
+    let rows = side + 16;
+    RowBlock {
+        data: (0..width * rows * bands).map(|i| (i % 251) as u8).collect(),
+        width,
+        bands,
         row_start: 0,
-        row_count: src_h,
+        rows,
     }
 }
 
-fn window(w: usize, h: usize) -> PixelWindow {
-    PixelWindow {
-        col: 0,
-        row: 0,
-        width: w,
-        height: h,
+fn job(side: usize) -> TileJob {
+    TileJob {
+        tile: Tile::new(0, 0, 0),
+        src: SrcRect {
+            x: side as f64 + 0.37,
+            y: 8.21,
+            width: side as f64,
+            height: side as f64,
+        },
+        dst: DstRect::full(TILE),
     }
 }
 
-// ── CPU resample ──────────────────────────────────────────────────────────────
-
-fn bench_tile_resample_cpu(c: &mut Criterion) {
-    let mut group = c.benchmark_group("tile_resample_cpu");
-
-    for (label, bands, src_w, src_h) in [
-        ("rgba_256x256_to_256", 4usize, 256usize, 256usize),
-        ("rgba_512x512_to_256", 4, 512, 512),
-        ("rgb_512x512_to_256", 3, 512, 512),
-    ] {
-        let chunk = synthetic_chunk(bands, src_w, src_h);
-        let win = window(src_w, src_h);
-
-        group.bench_with_input(
-            BenchmarkId::new(label, TILE),
-            &(chunk, win),
-            |b, (ch, w)| {
-                b.iter_batched(
-                    || (),
-                    |_| crop_tile(black_box(ch), black_box(*w), TILE, DstRect::full(TILE)).unwrap(),
-                    BatchSize::SmallInput,
-                );
-            },
-        );
+fn bench_with(c: &mut Criterion, group: &str, r: &dyn Resampler) {
+    let mut g = c.benchmark_group(group);
+    for (label, bands, side) in CASES {
+        let (blk, j) = (block(bands, side), job(side));
+        g.bench_with_input(BenchmarkId::new(label, TILE), &(blk, j), |b, (blk, j)| {
+            b.iter(|| r.resample(black_box(blk), black_box(j), TILE).unwrap())
+        });
     }
-
-    group.finish();
+    g.finish();
 }
 
-// ── GPU resample ──────────────────────────────────────────────────────────────
-
-#[cfg(feature = "gpu")]
-fn bench_tile_resample_gpu(c: &mut Criterion) {
-    use libgeotiles::backend::gpu::GpuContext;
-
-    // Attempt GPU init once; skip all GPU benchmarks gracefully if unavailable.
-    let ctx = match GpuContext::new() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("GPU benchmark skipped: {e}");
-            return;
-        }
-    };
-
-    let mut group = c.benchmark_group("tile_resample_gpu");
-
-    for (label, bands, src_w, src_h) in [
-        ("rgba_256x256_to_256", 4usize, 256usize, 256usize),
-        ("rgba_512x512_to_256", 4, 512, 512),
-        ("rgb_512x512_to_256", 3, 512, 512),
-    ] {
-        let chunk = synthetic_chunk(bands, src_w, src_h);
-        let win = window(src_w, src_h);
-
-        group.bench_with_input(
-            BenchmarkId::new(label, TILE),
-            &(chunk, win),
-            |b, (ch, w)| {
-                b.iter_batched(
-                    || (),
-                    |_| {
-                        ctx.crop_tile(black_box(ch), black_box(*w), TILE, DstRect::full(TILE))
-                            .unwrap()
-                    },
-                    BatchSize::SmallInput,
-                );
-            },
-        );
-    }
-
-    group.finish();
-}
-
-// ── Criterion wiring ──────────────────────────────────────────────────────────
-
-#[allow(unused_variables)]
 fn all_benchmarks(c: &mut Criterion) {
-    bench_tile_resample_cpu(c);
+    bench_with(c, "tile_resample_cpu", &CpuResampler);
     #[cfg(feature = "gpu")]
-    bench_tile_resample_gpu(c);
+    match libgeotiles::GpuResampler::new() {
+        Ok(gpu) => bench_with(c, "tile_resample_gpu", &gpu),
+        Err(e) => eprintln!("GPU benchmark skipped: {e}"),
+    }
 }
 
 criterion_group!(benches, all_benchmarks);

@@ -32,3 +32,13 @@ fn load_valid_toml() {
     assert_eq!(cfg.tilesize, Some(512));
     std::fs::remove_file(&tmp_path).ok();
 }
+
+#[test]
+fn shipped_example_config_parses() {
+    let cfg: Config = toml::from_str(include_str!("../../../examples/config.toml")).unwrap();
+    assert_eq!(cfg.extension.as_deref(), Some("png"));
+    assert!(
+        cfg.crs.is_none(),
+        "example leaves crs to the raster's GeoKeys"
+    );
+}

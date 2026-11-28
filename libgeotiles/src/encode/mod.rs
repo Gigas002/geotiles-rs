@@ -4,11 +4,58 @@ use tracing::debug;
 
 use crate::Result;
 use crate::error::Error;
-use crate::tile::Format;
 // Import all option types via wildcard; individual items that are only used inside
 // `#[cfg(feature = "...")]` blocks would otherwise trigger unused-import warnings.
 #[allow(unused_imports)]
 use options::*;
+
+/// Output format for encoded tiles.
+///
+/// All variants are always available; encoding returns [`Error::Encode`] at runtime if
+/// the corresponding Cargo feature (`png`, `jpeg`, `webp`, `avif`, `jxl`) is not compiled
+/// in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Format {
+    #[default]
+    Png,
+    Jpeg,
+    WebP,
+    Avif,
+    Jxl,
+}
+
+impl Format {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::WebP => "webp",
+            Self::Avif => "avif",
+            Self::Jxl => "jxl",
+        }
+    }
+
+    /// Whether the encoder for this format is compiled in.
+    pub fn is_available(self) -> bool {
+        match self {
+            Self::Png => cfg!(feature = "png"),
+            Self::Jpeg => cfg!(feature = "jpeg"),
+            Self::WebP => cfg!(feature = "webp"),
+            Self::Avif => cfg!(feature = "avif"),
+            Self::Jxl => cfg!(feature = "jxl"),
+        }
+    }
+
+    pub fn mime_type(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+            Self::WebP => "image/webp",
+            Self::Avif => "image/avif",
+            Self::Jxl => "image/jxl",
+        }
+    }
+}
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
@@ -261,17 +308,6 @@ fn color_type(bands: usize) -> Result<image::ExtendedColorType> {
         2 => Ok(image::ExtendedColorType::La8),
         3 => Ok(image::ExtendedColorType::Rgb8),
         4 => Ok(image::ExtendedColorType::Rgba8),
-        n => Err(Error::BadBandCount(n)),
-    }
-}
-
-/// For formats that do not support alpha (e.g. JPEG after stripping), map band count.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "webp", feature = "avif"))]
-#[allow(dead_code)]
-fn color_type_no_alpha(bands: usize) -> Result<image::ExtendedColorType> {
-    match bands {
-        1 => Ok(image::ExtendedColorType::L8),
-        3 => Ok(image::ExtendedColorType::Rgb8),
         n => Err(Error::BadBandCount(n)),
     }
 }

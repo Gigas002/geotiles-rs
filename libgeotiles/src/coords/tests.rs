@@ -1,9 +1,8 @@
 use super::flip_y;
 
-#[cfg(any(feature = "geographic", feature = "mercator"))]
-use super::{Bounds, Tile};
+use super::Tile;
+use crate::geo::Bounds;
 
-#[cfg(any(feature = "geographic", feature = "mercator"))]
 const EPS: f64 = 1e-6;
 
 // ── flip_y ────────────────────────────────────────────────────────────────────
@@ -37,7 +36,6 @@ fn flip_y_twice_is_identity() {
 
 // ── EPSG:4326 ─────────────────────────────────────────────────────────────────
 
-#[cfg(feature = "geographic")]
 mod geo {
     use super::*;
     use crate::coords::geographic::Geographic;
@@ -145,7 +143,6 @@ mod geo {
 
 // ── EPSG:3857 ─────────────────────────────────────────────────────────────────
 
-#[cfg(feature = "mercator")]
 mod merc {
     use super::*;
     use crate::coords::mercator::{self, ORIGIN_SHIFT, WebMercator};

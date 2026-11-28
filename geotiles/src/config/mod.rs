@@ -30,6 +30,8 @@ pub struct Config {
     pub tmr: Option<bool>,
     /// Source-pixel rows to hold in RAM at once (chunked I/O budget).
     pub chunk_size: Option<usize>,
+    /// Resample backend: `cpu` or `gpu`.
+    pub backend: Option<String>,
 
     /// PNG encoder options.
     #[serde(default)]

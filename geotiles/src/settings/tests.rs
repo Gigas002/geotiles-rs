@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use libgeotiles::Format;
+use libgeotiles::{Crs, Format};
 
 use super::*;
 
@@ -30,7 +30,8 @@ fn defaults_apply_when_nothing_set() {
     assert_eq!(s.max_zoom, 5);
     assert_eq!(s.format, Format::Png);
     assert!(!s.tms);
-    assert_eq!(s.crs, Crs::Geographic);
+    assert_eq!(s.crs, None);
+    assert_eq!(s.backend, Backend::Cpu);
     assert_eq!(s.tile_size, 256);
     assert!(!s.tmr);
     assert_eq!(s.chunk_size, 512);
@@ -68,19 +69,19 @@ fn config_fills_absent_cli() {
 
 #[test]
 fn parse_crs_all_aliases() {
-    assert_eq!(super::parse_crs("geographic").unwrap(), Crs::Geographic);
-    assert_eq!(super::parse_crs("EPSG:4326").unwrap(), Crs::Geographic);
-    assert_eq!(super::parse_crs("4326").unwrap(), Crs::Geographic);
-    assert_eq!(super::parse_crs("mercator").unwrap(), Crs::Mercator);
-    assert_eq!(super::parse_crs("EPSG:3857").unwrap(), Crs::Mercator);
-    assert_eq!(super::parse_crs("3857").unwrap(), Crs::Mercator);
+    assert_eq!(super::parse_crs("geographic").unwrap(), Crs::Wgs84);
+    assert_eq!(super::parse_crs("EPSG:4326").unwrap(), Crs::Wgs84);
+    assert_eq!(super::parse_crs("4326").unwrap(), Crs::Wgs84);
+    assert_eq!(super::parse_crs("mercator").unwrap(), Crs::WebMercator);
+    assert_eq!(super::parse_crs("EPSG:3857").unwrap(), Crs::WebMercator);
+    assert_eq!(super::parse_crs("3857").unwrap(), Crs::WebMercator);
     assert!(super::parse_crs("unknown").is_err());
 }
 
 #[test]
 fn parse_backend_cpu_and_unknown() {
-    assert_eq!(super::parse_backend("cpu").unwrap(), ResampleBackend::Cpu);
-    assert_eq!(super::parse_backend("CPU").unwrap(), ResampleBackend::Cpu);
+    assert_eq!(super::parse_backend("cpu").unwrap(), Backend::Cpu);
+    assert_eq!(super::parse_backend("CPU").unwrap(), Backend::Cpu);
     assert!(super::parse_backend("unknown").is_err());
 }
 
@@ -93,4 +94,17 @@ fn parse_format_all_variants() {
     assert_eq!(super::parse_format("avif").unwrap(), Format::Avif);
     assert_eq!(super::parse_format("jxl").unwrap(), Format::Jxl);
     assert!(super::parse_format("tif").is_err());
+}
+
+#[test]
+fn unknown_png_options_are_errors() {
+    let mut config = crate::config::Config::default();
+    config.png.compression = Some(String::from("max"));
+    assert!(Settings::resolve(&minimal_cli(), &config).is_err());
+
+    let mut config = crate::config::Config::default();
+    config.png.filter = Some(String::from("paeth"));
+    config.png.compression = Some(String::from("best"));
+    let s = Settings::resolve(&minimal_cli(), &config).unwrap();
+    assert_eq!(s.encode_opts.png.filter, libgeotiles::PngFilter::Paeth);
 }

@@ -1,37 +1,34 @@
-// GPU-accelerated tile crop + bilinear resize via wgpu.
-//
-// Only compiled when the `gpu` Cargo feature is enabled.
-//
-// Design summary
-// ──────────────
-// `GpuContext` is initialised once per pipeline run and reused for every tile.
-// Initialisation is async; `new()` blocks with `pollster::block_on`.
-//
-// Per-tile flow
-// ─────────────
-// 1. Extract source window from `ChunkBuffer` into an interleaved RGBA u8 vec
-//    (1-band → grey replicated to RGB, A=255; 2-band La8 → grey+alpha;
-//     3-band RGB → pad A=255; 4-band RGBA → as-is).
-// 2. Upload as `Rgba8Unorm` source texture.
-// 3. Dispatch the compute shader (shaders/resize.wgsl) to a storage buffer of
-//    `tile_size * tile_size` packed RGBA u32 values.
-// 4. Copy storage buffer → staging buffer; map + read back.
-// 5. Unpack u32 → [u8; 4] RGBA and return.
-//
-// The GPU path always returns 4-band RGBA.  Exact pixel values may differ
-// slightly from the CPU path due to floating-point rounding in the shader.
+//! GPU resampling via `wgpu` (feature `gpu`).
+//!
+//! The context (adapter, device, pipeline) is created once and shared by all worker
+//! threads. Per tile, the kernel footprint of the source is expanded to RGBA, uploaded as
+//! a texture, resampled by `shaders/resize.wgsl` (bilinear when upscaling, box-filtered
+//! taps when downscaling) and read back. Output is always RGBA.
+//!
+//! A tile whose footprint exceeds the device's maximum texture size (only at very low
+//! zooms of very large rasters) is handed to [`CpuResampler`] instead.
+//!
+//! Measured: crop/resize is a small share of a tile's cost next to encoding, so this
+//! backend mostly moves a little CPU work to the GPU; it exists for completeness and
+//! for machines with weak CPUs, not as the fast path.
 
 use pollster::FutureExt as _;
 use tracing::{debug, info};
 
+use super::cpu::CpuResampler;
+use super::{Resampler, TilePixels};
 use crate::error::Error;
-use crate::tile::{ChunkBuffer, DstRect, PixelWindow};
+use crate::plan::TileJob;
+use crate::raster::RowBlock;
 
 const SHADER_SRC: &str = include_str!("shaders/resize.wgsl");
 const WORKGROUP: u32 = 8;
+/// The box filter's footprint reaches half the downscale factor past the source rect,
+/// plus one texel for the bilinear taps; `support * scale + 1` covers that.
+const SUPPORT: f64 = 1.0;
 
-/// One-time GPU device context reused across all tile operations in a pipeline run.
-pub struct GpuContext {
+/// GPU resampler: one device context shared across all tiles of a run.
+pub struct GpuResampler {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
@@ -40,11 +37,11 @@ pub struct GpuContext {
     max_texture_dim: u32,
 }
 
-impl GpuContext {
+impl GpuResampler {
     /// Initialise GPU adapter, device, queue, and compile the resize compute pipeline.
     ///
-    /// Returns `Err(Error::Gpu)` when no suitable adapter is available (e.g. no Vulkan/Metal/DX12/GL).
-    /// Callers should fall back to the CPU backend on error.
+    /// Returns `Err(Error::Gpu)` when no suitable adapter is available (e.g. no
+    /// Vulkan/Metal/DX12/GL).
     pub fn new() -> crate::Result<Self> {
         async {
             let instance = wgpu::Instance::default();
@@ -143,6 +140,8 @@ impl GpuContext {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
                 ..Default::default()
             });
 
@@ -158,57 +157,29 @@ impl GpuContext {
         .block_on()
     }
 
-    /// The device's maximum 2-D texture dimension. A tile job whose source
-    /// [`PixelWindow`] exceeds this in either dimension cannot go through
-    /// [`crop_tile`](Self::crop_tile) — `wgpu` will panic on texture creation. Only
-    /// possible at very low zoom levels on very large (wider/taller than ~8k px) rasters;
-    /// callers should route such jobs to the CPU backend instead.
+    /// The device's maximum 2-D texture dimension; larger footprints go to the CPU.
     pub fn max_texture_dim(&self) -> u32 {
         self.max_texture_dim
     }
 
-    /// Crop the pixel window from `chunk`, resize it on the GPU, and place it at `dst`
-    /// within a `tile_size × tile_size` canvas.
-    ///
-    /// Always returns 4-band RGBA bytes (`tile_size * tile_size * 4` elements). Canvas
-    /// area outside `dst` is zero-filled (fully transparent) — this is the part of the
-    /// tile the source dataset does not cover. Source bands are expanded to RGBA before
-    /// upload regardless of source band count.
-    ///
-    /// `window` must fit within [`max_texture_dim`](Self::max_texture_dim) in both
-    /// dimensions.
-    pub fn crop_tile(
+    /// Resample on the GPU. `view` is the RGBA footprint `[c0, c1) × [r0, r1)`.
+    fn run(
         &self,
-        chunk: &ChunkBuffer,
-        window: PixelWindow,
+        view: &[u8],
+        view_w: u32,
+        view_h: u32,
+        crop: [f32; 4],
+        job: &TileJob,
         tile_size: u32,
-        dst: DstRect,
     ) -> crate::Result<Vec<u8>> {
-        let bands = chunk.band_count();
-        let src_w = window.width as u32;
-        let src_h = window.height as u32;
-        let row_off = window.row.saturating_sub(chunk.row_start);
-
-        debug!(
-            col = window.col,
-            row = window.row,
-            src_w,
-            src_h,
-            bands,
-            tile_size,
-            ?dst,
-            "gpu::crop_tile"
-        );
-
-        let rgba = build_rgba(chunk, window, row_off, bands)?;
-
+        let size = wgpu::Extent3d {
+            width: view_w,
+            height: view_h,
+            depth_or_array_layers: 1,
+        };
         let src_tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("src"),
-            size: wgpu::Extent3d {
-                width: src_w,
-                height: src_h,
-                depth_or_array_layers: 1,
-            },
+            size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -216,40 +187,40 @@ impl GpuContext {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-
         self.queue.write_texture(
             src_tex.as_image_copy(),
-            &rgba,
+            view,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(src_w * 4),
+                bytes_per_row: Some(view_w * 4),
                 rows_per_image: None,
             },
-            wgpu::Extent3d {
-                width: src_w,
-                height: src_h,
-                depth_or_array_layers: 1,
-            },
+            size,
         );
 
-        let out_pixels = dst.width * dst.height;
-        let out_buf_size = (out_pixels * 4) as u64;
+        let d = job.dst;
+        let out_size = (d.width * d.height * 4) as u64;
         let out_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("out_buf"),
-            size: out_buf_size,
+            size: out_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        let dims_data: [u32; 4] = [dst.width, dst.height, 0, 0];
-        let dims_bytes: Vec<u8> = dims_data.iter().flat_map(|v| v.to_le_bytes()).collect();
-        let dims_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("dims_uniform"),
-            size: 16,
+        let mut params = Vec::with_capacity(32);
+        for v in [d.width, d.height, 0, 0] {
+            params.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in crop {
+            params.extend_from_slice(&v.to_le_bytes());
+        }
+        let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("params"),
+            size: params.len() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue.write_buffer(&dims_buf, 0, &dims_bytes);
+        self.queue.write_buffer(&params_buf, 0, &params);
 
         let src_view = src_tex.create_view(&Default::default());
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -270,7 +241,7 @@ impl GpuContext {
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: dims_buf.as_entire_binding(),
+                    resource: params_buf.as_entire_binding(),
                 },
             ],
         });
@@ -287,18 +258,15 @@ impl GpuContext {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            let wg_x = dst.width.div_ceil(WORKGROUP);
-            let wg_y = dst.height.div_ceil(WORKGROUP);
-            pass.dispatch_workgroups(wg_x, wg_y, 1);
+            pass.dispatch_workgroups(d.width.div_ceil(WORKGROUP), d.height.div_ceil(WORKGROUP), 1);
         }
-
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("staging"),
-            size: out_buf_size,
+            size: out_size,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        encoder.copy_buffer_to_buffer(&out_buf, 0, &staging, 0, out_buf_size);
+        encoder.copy_buffer_to_buffer(&out_buf, 0, &staging, 0, out_size);
         self.queue.submit([encoder.finish()]);
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -309,82 +277,93 @@ impl GpuContext {
             .poll(wgpu::PollType::wait_indefinitely())
             .map_err(|e| Error::Gpu(e.to_string()))?;
         rx.recv()
-            .expect("map_async channel dropped")
+            .map_err(|e| Error::Gpu(e.to_string()))?
             .map_err(|e| Error::Gpu(e.to_string()))?;
 
         let mapped = staging
             .slice(..)
             .get_mapped_range()
             .map_err(|e| Error::Gpu(e.to_string()))?;
-
-        // Zero-filled (fully transparent) canvas; `dst` is embedded at its true position,
-        // leaving the rest of the tile blank when the source dataset doesn't reach it.
+        // Packed u32 little-endian is byte order R, G, B, A: rows copy straight in.
         let mut canvas = vec![0u8; (tile_size * tile_size * 4) as usize];
-        for row in 0..dst.height {
-            let src_row_start = (row * dst.width * 4) as usize;
-            let src_row = &mapped[src_row_start..src_row_start + (dst.width * 4) as usize];
-            let dst_row_start = (((dst.y + row) * tile_size + dst.x) * 4) as usize;
-            for (i, packed) in src_row.as_chunks::<4>().0.iter().enumerate() {
-                let packed = u32::from_le_bytes(*packed);
-                let out_base = dst_row_start + i * 4;
-                canvas[out_base] = (packed & 0xFF) as u8;
-                canvas[out_base + 1] = ((packed >> 8) & 0xFF) as u8;
-                canvas[out_base + 2] = ((packed >> 16) & 0xFF) as u8;
-                canvas[out_base + 3] = ((packed >> 24) & 0xFF) as u8;
-            }
+        let row_bytes = (d.width * 4) as usize;
+        for row in 0..d.height as usize {
+            let src = row * row_bytes;
+            let dst = ((d.y as usize + row) * tile_size as usize + d.x as usize) * 4;
+            canvas[dst..dst + row_bytes].copy_from_slice(&mapped[src..src + row_bytes]);
         }
         drop(mapped);
         staging.unmap();
-
         Ok(canvas)
     }
 }
 
-fn build_rgba(
-    chunk: &ChunkBuffer,
-    window: PixelWindow,
-    row_off: usize,
-    bands: usize,
-) -> crate::Result<Vec<u8>> {
-    let n = window.width * window.height;
-    let mut rgba = vec![0u8; n * 4];
-
-    for row in 0..window.height {
-        let chunk_row = row_off + row;
-        for col in 0..window.width {
-            let src = chunk_row * chunk.ds_width + window.col + col;
-            let dst = (row * window.width + col) * 4;
-            match bands {
-                1 => {
-                    let v = chunk.band_data[0][src];
-                    rgba[dst] = v;
-                    rgba[dst + 1] = v;
-                    rgba[dst + 2] = v;
-                    rgba[dst + 3] = 255;
-                }
-                2 => {
-                    let l = chunk.band_data[0][src];
-                    rgba[dst] = l;
-                    rgba[dst + 1] = l;
-                    rgba[dst + 2] = l;
-                    rgba[dst + 3] = chunk.band_data[1][src];
-                }
-                3 => {
-                    rgba[dst] = chunk.band_data[0][src];
-                    rgba[dst + 1] = chunk.band_data[1][src];
-                    rgba[dst + 2] = chunk.band_data[2][src];
-                    rgba[dst + 3] = 255;
-                }
-                4 => {
-                    rgba[dst] = chunk.band_data[0][src];
-                    rgba[dst + 1] = chunk.band_data[1][src];
-                    rgba[dst + 2] = chunk.band_data[2][src];
-                    rgba[dst + 3] = chunk.band_data[3][src];
-                }
-                n => return Err(Error::BadBandCount(n)),
-            }
-        }
+impl Resampler for GpuResampler {
+    fn support(&self) -> f64 {
+        // The CPU fallback needs the wider Lanczos footprint.
+        CpuResampler.support().max(SUPPORT)
     }
 
-    Ok(rgba)
+    fn resample(
+        &self,
+        block: &RowBlock,
+        job: &TileJob,
+        tile_size: u32,
+    ) -> crate::Result<TilePixels> {
+        let (r0, r1) = job.rows_needed(SUPPORT, block.row_end());
+        let r0 = r0.max(block.row_start);
+        let (c0, c1) = job.cols_needed(SUPPORT, block.width);
+        let (view_w, view_h) = ((c1 - c0) as u32, (r1 - r0) as u32);
+
+        if view_w > self.max_texture_dim || view_h > self.max_texture_dim {
+            debug!(view_w, view_h, tile = ?job.tile, "footprint exceeds GPU texture limit; using CPU");
+            return CpuResampler.resample(block, job, tile_size);
+        }
+
+        let view = rgba_view(block, c0, c1, r0, r1)?;
+        let crop = [
+            (job.src.x - c0 as f64) as f32,
+            (job.src.y - r0 as f64) as f32,
+            job.src.width as f32,
+            job.src.height as f32,
+        ];
+        Ok(TilePixels {
+            data: self.run(&view, view_w, view_h, crop, job, tile_size)?,
+            bands: 4,
+        })
+    }
+}
+
+/// Expand columns `[c0, c1)` of block rows `[r0, r1)` (absolute) to RGBA.
+fn rgba_view(
+    block: &RowBlock,
+    c0: usize,
+    c1: usize,
+    r0: usize,
+    r1: usize,
+) -> crate::Result<Vec<u8>> {
+    let bands = block.bands;
+    let mut out = Vec::with_capacity((c1 - c0) * (r1 - r0) * 4);
+    for row in r0..r1 {
+        let start = ((row - block.row_start) * block.width + c0) * bands;
+        let px = &block.data[start..start + (c1 - c0) * bands];
+        match bands {
+            1 => px
+                .iter()
+                .for_each(|&l| out.extend_from_slice(&[l, l, l, 255])),
+            2 => px
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .for_each(|p| out.extend_from_slice(&[p[0], p[0], p[0], p[1]])),
+            3 => px
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .for_each(|p| out.extend_from_slice(&[p[0], p[1], p[2], 255])),
+            4 => out.extend_from_slice(px),
+            n => return Err(Error::BadBandCount(n)),
+        }
+    }
+    Ok(out)
 }

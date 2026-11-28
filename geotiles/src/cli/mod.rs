@@ -8,7 +8,8 @@ use clap::Parser;
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// Path to the input GeoTIFF (or any GDAL-supported raster).
+    /// Input GeoTIFF: 8-bit, north-up, pixel-interleaved, 1–4 bands, already in the tile
+    /// CRS (reproject/convert it beforehand if not).
     #[arg(short, long, value_name = "PATH")]
     pub input: PathBuf,
 
@@ -28,7 +29,8 @@ pub struct Cli {
     #[arg(long)]
     pub tms: Option<bool>,
 
-    /// Target coordinate system: `geographic` (EPSG:4326) or `mercator` (EPSG:3857).
+    /// Tile grid: `geographic` (EPSG:4326) or `mercator` (EPSG:3857). Defaults to the
+    /// raster's declared CRS; must match it when both are known.
     #[arg(long, value_name = "CRS")]
     pub crs: Option<String>,
 
@@ -36,7 +38,7 @@ pub struct Cli {
     #[arg(short, long, value_name = "N")]
     pub bands: Option<usize>,
 
-    /// Tile width/height in pixels (must be a power of two; default 256).
+    /// Tile width/height in pixels (default 256).
     #[arg(long, value_name = "N")]
     pub tilesize: Option<u32>,
 
@@ -48,7 +50,7 @@ pub struct Cli {
     #[arg(long, value_name = "N")]
     pub chunk_size: Option<usize>,
 
-    /// Tile resample backend: `cpu` (default) or `gpu` (requires the `gpu` build feature).
+    /// Resample backend: `cpu` (default) or `gpu` (requires the `gpu` build feature).
     #[arg(long, value_name = "BACKEND")]
     pub backend: Option<String>,
 

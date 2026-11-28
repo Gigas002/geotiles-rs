@@ -1,52 +1,24 @@
-use super::*;
-#[cfg(any(feature = "geographic", feature = "mercator"))]
-use libgeotiles::tile::DstRect;
+use libgeotiles::Crs;
 
-#[cfg(any(feature = "geographic", feature = "mercator"))]
+use super::resolve_crs;
+
 #[test]
-fn apply_bands_pads_alpha_opaque_inside_dst_and_transparent_outside() {
-    // 2×2 tile, RGB → RGBA, real data only in the top-left pixel (dst = 1×1 at origin).
-    let pixels = vec![
-        10, 20, 30, 0, 0, 0, // row 0: real pixel, padding pixel
-        0, 0, 0, 0, 0, 0, // row 1: padding, padding
-    ];
-    let dst = DstRect {
-        x: 0,
-        y: 0,
-        width: 1,
-        height: 1,
-    };
-    let out = apply_bands(pixels, 3, 4, 2, dst);
+fn explicit_crs_wins() {
     assert_eq!(
-        out,
-        vec![10, 20, 30, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        resolve_crs(Some(Crs::WebMercator), Some(4326)).unwrap(),
+        Crs::WebMercator
     );
-}
-
-#[cfg(any(feature = "geographic", feature = "mercator"))]
-#[test]
-fn apply_bands_noop_when_band_counts_match() {
-    let pixels = vec![1, 2, 3, 4];
-    let out = apply_bands(pixels.clone(), 4, 4, 1, DstRect::full(1));
-    assert_eq!(out, pixels);
+    assert_eq!(resolve_crs(Some(Crs::Wgs84), None).unwrap(), Crs::Wgs84);
 }
 
 #[test]
-fn dataset_bounds_north_up() {
-    let gt = [-180.0, 0.5, 0.0, 90.0, 0.0, -0.5];
-    let bounds = dataset_bounds(&gt, 720, 360);
-    assert!((bounds.min_x - (-180.0)).abs() < 1e-9);
-    assert!((bounds.max_x - 180.0).abs() < 1e-9);
-    assert!((bounds.max_y - 90.0).abs() < 1e-9);
-    assert!((bounds.min_y - (-90.0)).abs() < 1e-9);
+fn crs_taken_from_raster() {
+    assert_eq!(resolve_crs(None, Some(4326)).unwrap(), Crs::Wgs84);
+    assert_eq!(resolve_crs(None, Some(3785)).unwrap(), Crs::WebMercator);
 }
 
 #[test]
-fn dataset_bounds_partial() {
-    let gt = [10.0, 1.0, 0.0, 50.0, 0.0, -1.0];
-    let bounds = dataset_bounds(&gt, 5, 5);
-    assert!((bounds.min_x - 10.0).abs() < 1e-9);
-    assert!((bounds.max_x - 15.0).abs() < 1e-9);
-    assert!((bounds.max_y - 50.0).abs() < 1e-9);
-    assert!((bounds.min_y - 45.0).abs() < 1e-9);
+fn unusable_or_missing_crs_errors() {
+    assert!(resolve_crs(None, Some(3395)).is_err());
+    assert!(resolve_crs(None, None).is_err());
 }

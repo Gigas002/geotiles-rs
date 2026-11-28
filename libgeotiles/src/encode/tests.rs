@@ -1,5 +1,5 @@
+use super::Format;
 use super::{encode_tile, options::EncodeOptions};
-use crate::tile::Format;
 
 #[test]
 fn encode_options_defaults_are_sane() {
@@ -325,4 +325,17 @@ fn jxl_feature_off_returns_encode_error() {
         matches!(err, crate::Error::Encode(_)),
         "unexpected error: {err}"
     );
+}
+
+#[test]
+fn extensions_and_mime_types() {
+    for (f, ext, mime) in [
+        (Format::Png, "png", "image/png"),
+        (Format::Jpeg, "jpg", "image/jpeg"),
+        (Format::WebP, "webp", "image/webp"),
+        (Format::Avif, "avif", "image/avif"),
+        (Format::Jxl, "jxl", "image/jxl"),
+    ] {
+        assert_eq!((f.extension(), f.mime_type()), (ext, mime));
+    }
 }

@@ -7,7 +7,8 @@
 
 use tracing::debug;
 
-use super::{Bounds, DEFAULT_TILE_SIZE, Tile};
+use super::{DEFAULT_TILE_SIZE, Tile, TileGrid};
+use crate::geo::{Bounds, Crs};
 
 /// Tile grid for EPSG:4326.
 ///
@@ -73,6 +74,24 @@ impl Geographic {
         let max = self.tile(area.max_x, area.min_y, z);
         debug!(z, ?area, ?min, ?max, "tile_range (4326)");
         (min, max)
+    }
+}
+
+impl TileGrid for Geographic {
+    fn crs(&self) -> Crs {
+        Crs::Wgs84
+    }
+
+    fn tile_size(&self) -> u32 {
+        self.tile_size
+    }
+
+    fn tile_range(&self, area: Bounds, z: u8) -> (Tile, Tile) {
+        Geographic::tile_range(self, area, z)
+    }
+
+    fn tile_bounds(&self, tile: Tile) -> Bounds {
+        self.bounds(tile)
     }
 }
 
