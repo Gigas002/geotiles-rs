@@ -13,3 +13,5 @@ extend-ignore-identifiers-re = ["[Pp]aeth"]
 [default.extend-words]
 # Paeth is a proper noun (PNG filter named after Alan W. Paeth).
 paeth = "paeth"
+# GDAL's `-ot` (output type) flag in README examples.
+ot = "ot"
