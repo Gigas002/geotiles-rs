@@ -25,12 +25,13 @@ extension = "png"
 # Built-in default: false
 tms = false
 
-# Target coordinate reference system for the output tile grid.
-# Built-in default: "geographic"
+# Tile grid CRS. The input raster must already be in it (reproject beforehand).
+# Built-in default: the CRS declared in the raster's GeoKeys; a raster without one needs this
+# (or --crs). Setting it on a raster that declares a different CRS is an error.
 # Valid values:
 #   "geographic" | "geodetic" | "4326" | "epsg:4326"  — EPSG:4326 lat/lon grid
 #   "mercator"   | "webmercator" | "3857" | "epsg:3857" — Web Mercator (Google Maps)
-crs = "geographic"
+# crs = "geographic"
 
 # Number of colour channels (bands) written per output tile: 1–4.
 # Omit (or comment out) to inherit the source raster band count.
@@ -41,22 +42,26 @@ crs = "geographic"
 # Note: JPEG does not support alpha — alpha is automatically stripped for jpg output.
 # bands = 4
 
-# Tile width and height in pixels.  Must be a power of two.
+# Tile width and height in pixels.
 # Common values: 256 (standard web maps), 512 (high-DPI / retina).
 # Built-in default: 256
 tilesize = 256
 
 # Write an OGC TMS 1.0.0 tilemapresource.xml file into the output directory.
-# Useful for compatibility with MapTiler, gdal2tiles, and TMS-aware clients.
+# Useful for compatibility with MapTiler, gdal2tiles-style, and TMS-aware clients.
 # Built-in default: false
 tmr = false
 
-# Maximum number of source-pixel rows loaded into RAM at once (chunked I/O budget).
-# Smaller values use less memory but may require more GDAL reads.
-# Larger values are faster for tall rasters that fit in RAM.
+# Source rows read per batch (memory budget: about chunk_size * width * bands bytes).
+# Smaller values use less memory; a tile that spans more rows (low zooms) still reads
+# what it needs. Larger values mean fewer, bigger reads.
 # Rule of thumb: set to (available_RAM_bytes / (raster_width_px * bytes_per_pixel)).
 # Built-in default: 512
 chunk_size = 512
+
+# Resample backend: "cpu" (Lanczos3) or "gpu" (needs the "gpu" Cargo feature).
+# Built-in default: "cpu"
+# backend = "cpu"
 
 # ── PNG encoder ───────────────────────────────────────────────────────────────
 
