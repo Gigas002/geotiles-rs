@@ -1,184 +1,179 @@
-use super::cpu::crop_tile;
-use crate::tile::{ChunkBuffer, DstRect, PixelWindow};
+use super::cpu::CpuResampler;
+use super::{Resampler, TilePixels};
+use crate::coords::Tile;
+use crate::plan::{DstRect, SrcRect, TileJob};
+use crate::raster::RowBlock;
 
-#[test]
-fn crop_tile_identity_1band() {
-    let data = (0u8..16).collect::<Vec<_>>();
-    let chunk = ChunkBuffer {
-        band_data: vec![data],
-        ds_width: 4,
-        row_start: 0,
-        row_count: 4,
-    };
-    let window = PixelWindow {
-        col: 0,
-        row: 0,
-        width: 4,
-        height: 4,
-    };
-    let result = crop_tile(&chunk, window, 2, DstRect::full(2)).unwrap();
-    assert_eq!(result.len(), 4, "2×2 × 1 band = 4 bytes");
-}
-
-#[test]
-fn crop_tile_sub_window_3band() {
-    let band: Vec<u8> = (0u8..24).collect();
-    let chunk = ChunkBuffer {
-        band_data: vec![band.clone(), band.clone(), band],
-        ds_width: 6,
-        row_start: 0,
-        row_count: 4,
-    };
-    let window = PixelWindow {
-        col: 2,
-        row: 1,
-        width: 2,
-        height: 2,
-    };
-    let result = crop_tile(&chunk, window, 4, DstRect::full(4)).unwrap();
-    assert_eq!(result.len(), 4 * 4 * 3, "4×4 × 3 bands = 48 bytes");
-}
-
-#[test]
-fn crop_tile_respects_chunk_row_offset() {
-    let data = vec![42u8; 8 * 4];
-    let chunk = ChunkBuffer {
-        band_data: vec![data],
-        ds_width: 8,
-        row_start: 10,
-        row_count: 4,
-    };
-    let window = PixelWindow {
-        col: 0,
-        row: 10,
-        width: 8,
-        height: 4,
-    };
-    let result = crop_tile(&chunk, window, 4, DstRect::full(4)).unwrap();
-    assert_eq!(result.len(), 16);
-    assert!(result.iter().all(|&p| p == 42));
-}
-
-// ── GPU ───────────────────────────────────────────────────────────────────────
-//
-// Require an actual GPU adapter (Vulkan, Metal, DX12, or a software renderer
-// such as lavapipe).  Marked `#[ignore]` so plain `cargo test` stays offline.
-//
-// Run manually:
-//   cargo test -p libgeotiles --features gpu -- --ignored backend::
-
-#[cfg(feature = "gpu")]
-mod gpu_tests {
-    use super::super::gpu::GpuContext;
-    use crate::tile::{ChunkBuffer, DstRect, PixelWindow};
-
-    /// A smooth per-band diagonal gradient. Deliberately *not* `(i + b*7) % 251`-style
-    /// data: that wraps every 251 pixels within a 1024-pixel band, creating sawtooth
-    /// discontinuities that make bilinear (GPU) and Lanczos3 (CPU) diverge sharply via
-    /// ringing — real algorithmic disagreement on adversarial data, not a bug, but it
-    /// makes an "approximately equal" comparison meaningless.
-    fn synthetic_chunk(bands: usize) -> ChunkBuffer {
-        let w = 32usize;
-        let h = 32usize;
-        let band_data: Vec<Vec<u8>> = (0..bands)
-            .map(|b| {
-                (0..h)
-                    .flat_map(|row| {
-                        (0..w).map(move |col| {
-                            let gradient = ((row * 255) / (h - 1) + (col * 255) / (w - 1)) / 2;
-                            (gradient as i32 - (b as i32) * 20).clamp(0, 255) as u8
-                        })
-                    })
-                    .collect()
-            })
-            .collect();
-        ChunkBuffer {
-            band_data,
-            ds_width: w,
-            row_start: 0,
-            row_count: h,
+fn block(
+    width: usize,
+    rows: usize,
+    bands: usize,
+    row_start: usize,
+    f: impl Fn(usize, usize, usize) -> u8,
+) -> RowBlock {
+    let mut data = Vec::with_capacity(width * rows * bands);
+    for r in 0..rows {
+        for c in 0..width {
+            for b in 0..bands {
+                data.push(f(row_start + r, c, b));
+            }
         }
     }
+    RowBlock {
+        data,
+        width,
+        bands,
+        row_start,
+        rows,
+    }
+}
 
-    fn window_full(w: usize, h: usize) -> PixelWindow {
-        PixelWindow {
-            col: 0,
-            row: 0,
+fn job(x: f64, y: f64, w: f64, h: f64, dst: DstRect) -> TileJob {
+    TileJob {
+        tile: Tile::new(0, 0, 0),
+        src: SrcRect {
+            x,
+            y,
             width: w,
             height: h,
+        },
+        dst,
+    }
+}
+
+/// Smooth gradient: resamplers agree on it up to kernel differences.
+fn gradient(r: usize, c: usize, b: usize) -> u8 {
+    ((r * 3 + c * 2 + b * 20) % 256) as u8
+}
+
+#[test]
+fn cpu_identity_at_one_to_one() {
+    let blk = block(4, 4, 1, 0, |r, c, _| (r * 4 + c) as u8);
+    let out = CpuResampler
+        .resample(&blk, &job(0.0, 0.0, 4.0, 4.0, DstRect::full(4)), 4)
+        .unwrap();
+    assert_eq!(
+        out,
+        TilePixels {
+            data: (0..16).collect(),
+            bands: 1
         }
+    );
+}
+
+#[test]
+fn cpu_reads_relative_to_block_row_start() {
+    // Rows 10..20 of a raster, constant 42: any window renders as 42.
+    let blk = block(8, 10, 3, 10, |_, _, _| 42);
+    let out = CpuResampler
+        .resample(&blk, &job(1.5, 12.25, 5.0, 4.0, DstRect::full(16)), 16)
+        .unwrap();
+    assert_eq!(out.bands, 3);
+    assert!(out.data.iter().all(|&p| p == 42));
+}
+
+#[test]
+fn cpu_leaves_canvas_outside_dst_empty() {
+    let blk = block(8, 8, 4, 0, |_, _, _| 200);
+    let dst = DstRect {
+        x: 4,
+        y: 0,
+        width: 4,
+        height: 8,
+    };
+    let out = CpuResampler
+        .resample(&blk, &job(0.0, 0.0, 8.0, 8.0, dst), 8)
+        .unwrap();
+    for (i, px) in out.data.as_chunks::<4>().0.iter().enumerate() {
+        let inside = i % 8 >= 4;
+        assert_eq!(*px, if inside { [200; 4] } else { [0; 4] }, "pixel {i}");
     }
+}
+
+#[test]
+fn cpu_result_independent_of_how_many_rows_the_block_holds() {
+    // A tile in the middle of a 64-row raster, rendered from the whole raster and from
+    // just the rows it needs: must be identical, or batching would show seams.
+    let j = job(10.3, 20.7, 17.0, 13.0, DstRect::full(8));
+    let full = block(48, 64, 3, 0, gradient);
+    let (lo, hi) = j.rows_needed(CpuResampler.support(), 64);
+    let slice = block(48, hi - lo, 3, lo, gradient);
+    assert_eq!(
+        CpuResampler.resample(&full, &j, 8).unwrap(),
+        CpuResampler.resample(&slice, &j, 8).unwrap()
+    );
+}
+
+#[test]
+fn cpu_upscale_honours_sub_pixel_offset() {
+    // Horizontal ramp: pixel column c (centre c + 0.5) has value 10c, which Lanczos
+    // reproduces exactly away from the edges. A quarter-pixel window at x = 3.25 must
+    // land on values 10 * (u - 0.5) for u in (3.25, 3.5): about 27.6 → 29.9.
+    let blk = block(16, 16, 1, 0, |_, c, _| (c * 10) as u8);
+    let out = CpuResampler
+        .resample(&blk, &job(3.25, 6.0, 0.25, 0.25, DstRect::full(16)), 16)
+        .unwrap();
+    let row = &out.data[..16];
+    assert!(row.iter().all(|&p| (27..=30).contains(&p)), "{row:?}");
+    assert!(row[0] < row[15], "{row:?}");
+}
+
+#[cfg(feature = "gpu")]
+mod gpu {
+    //! Need a GPU adapter (or a software one such as lavapipe):
+    //! `cargo test -p libgeotiles --features gpu -- --ignored resample::`
+    use super::*;
+    use crate::resample::gpu::GpuResampler;
 
     #[test]
-    #[ignore = "requires GPU adapter (run manually or in GPU-equipped CI)"]
-    fn init_succeeds() {
-        GpuContext::new().expect("GPU context should initialise");
+    #[ignore = "requires GPU adapter"]
+    fn rgba_output_and_opaque_alpha_for_gray() {
+        let ctx = GpuResampler::new().expect("GPU init");
+        let blk = block(32, 32, 1, 0, gradient);
+        let out = ctx
+            .resample(&blk, &job(0.0, 0.0, 32.0, 32.0, DstRect::full(64)), 64)
+            .unwrap();
+        assert_eq!((out.bands, out.data.len()), (4, 64 * 64 * 4));
+        assert!(out.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
     }
 
     #[test]
     #[ignore = "requires GPU adapter"]
-    fn crop_tile_returns_correct_size() {
-        let ctx = GpuContext::new().expect("GPU init");
-        let chunk = synthetic_chunk(3);
-        let win = window_full(32, 32);
-        let result = ctx
-            .crop_tile(&chunk, win, 256, DstRect::full(256))
-            .expect("crop_tile");
-        assert_eq!(
-            result.len(),
-            256 * 256 * 4,
-            "GPU output should be RGBA 256×256"
-        );
-    }
-
-    #[test]
-    #[ignore = "requires GPU adapter"]
-    fn crop_tile_single_band_alpha_is_255() {
-        let ctx = GpuContext::new().expect("GPU init");
-        let chunk = synthetic_chunk(1);
-        let win = window_full(32, 32);
-        let result = ctx
-            .crop_tile(&chunk, win, 64, DstRect::full(64))
-            .expect("crop_tile single band");
-        assert_eq!(result.len(), 64 * 64 * 4);
-        for pixel in result.as_chunks::<4>().0 {
-            assert_eq!(pixel[3], 255, "alpha should be 255 for single-band source");
-        }
-    }
-
-    #[test]
-    #[ignore = "requires GPU adapter"]
-    fn crop_tile_matches_cpu_approximately() {
-        use crate::backend::cpu::crop_tile as cpu_crop;
-
-        let ctx = GpuContext::new().expect("GPU init");
-        let chunk = synthetic_chunk(4);
-        let win = window_full(32, 32);
-
-        let cpu_out = cpu_crop(&chunk, win, 64, DstRect::full(64)).expect("CPU crop");
-        let gpu_out = ctx
-            .crop_tile(&chunk, win, 64, DstRect::full(64))
-            .expect("GPU crop");
-
-        assert_eq!(gpu_out.len(), 64 * 64 * 4);
-
-        // CPU (Lanczos3) and GPU (bilinear) are genuinely different resampling kernels,
-        // not just different roundings of the same one — Lanczos3's wider kernel needs
-        // edge-extrapolated samples near tile boundaries, which legitimately diverges
-        // from bilinear's purely local sampling there (observed: a handful of near-edge
-        // pixels differing by 50+, even on a smooth gradient with no sharp source
-        // features). A per-pixel max-diff bound is therefore the wrong check; compare
-        // the *mean* absolute difference across the whole tile instead, which is stable
-        // and small when the two algorithms genuinely agree overall.
-        let sum: u64 = cpu_out
+    fn close_to_cpu_on_smooth_input() {
+        let ctx = GpuResampler::new().expect("GPU init");
+        let blk = block(64, 64, 4, 0, |r, c, b| {
+            ((r + c) * 2 + b * 10).min(255) as u8
+        });
+        let j = job(4.5, 3.25, 50.0, 50.0, DstRect::full(32));
+        let gpu = ctx.resample(&blk, &j, 32).unwrap();
+        let cpu = CpuResampler.resample(&blk, &j, 32).unwrap();
+        let diff: u64 = gpu
+            .data
             .iter()
-            .zip(gpu_out.iter())
-            .map(|(c, g)| c.abs_diff(*g) as u64)
+            .zip(&cpu.data)
+            .map(|(a, b)| a.abs_diff(*b) as u64)
             .sum();
-        let mean_diff = sum as f64 / cpu_out.len() as f64;
-        assert!(
-            mean_diff <= 8.0,
-            "GPU/CPU mean pixel diff should be small, got {mean_diff:.2}"
+        let mean = diff as f64 / gpu.data.len() as f64;
+        assert!(mean < 2.0, "mean diff {mean:.2}");
+    }
+
+    #[test]
+    #[ignore = "requires GPU adapter"]
+    fn downscale_averages_instead_of_aliasing() {
+        // 1-px checkerboard shrunk 8×: every output pixel should be mid-gray.
+        let ctx = GpuResampler::new().expect("GPU init");
+        let blk = block(
+            256,
+            256,
+            1,
+            0,
+            |r, c, _| if (r + c) % 2 == 0 { 255 } else { 0 },
         );
+        let out = ctx
+            .resample(&blk, &job(0.0, 0.0, 256.0, 256.0, DstRect::full(32)), 32)
+            .unwrap();
+        for px in out.data.as_chunks::<4>().0 {
+            assert!((120..=135).contains(&px[0]), "aliased value {}", px[0]);
+        }
     }
 }

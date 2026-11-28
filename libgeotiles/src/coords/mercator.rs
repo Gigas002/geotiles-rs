@@ -9,7 +9,8 @@ use std::f64::consts::PI;
 
 use tracing::debug;
 
-use super::{Bounds, DEFAULT_TILE_SIZE, Tile};
+use super::{DEFAULT_TILE_SIZE, Tile, TileGrid};
+use crate::geo::{Bounds, Crs};
 
 /// WGS-84 semi-major axis in metres.
 pub const EARTH_RADIUS: f64 = 6_378_137.0;
@@ -110,8 +111,9 @@ impl WebMercator {
         }
     }
 
-    /// Inclusive tile range `(top_left, bottom_right)` covering geographic `area` at zoom `z`.
-    pub fn tile_range(&self, area: Bounds, z: u8) -> (Tile, Tile) {
+    /// Inclusive tile range `(top_left, bottom_right)` covering a WGS 84 `area` (degrees)
+    /// at zoom `z`. The [`TileGrid`] impl takes metres instead.
+    pub fn tile_range_lonlat(&self, area: Bounds, z: u8) -> (Tile, Tile) {
         let min = self.tile(area.min_x, area.max_y, z);
         let max = self.tile(area.max_x, area.min_y, z);
         debug!(z, ?area, ?min, ?max, "tile_range (3857)");
@@ -123,6 +125,26 @@ impl WebMercator {
         let min = self.tile_from_merc(area.min_x, area.max_y, z);
         let max = self.tile_from_merc(area.max_x, area.min_y, z);
         (min, max)
+    }
+}
+
+impl TileGrid for WebMercator {
+    fn crs(&self) -> Crs {
+        Crs::WebMercator
+    }
+
+    fn tile_size(&self) -> u32 {
+        self.tile_size
+    }
+
+    /// `area` is in Web Mercator metres.
+    fn tile_range(&self, area: Bounds, z: u8) -> (Tile, Tile) {
+        self.tile_range_from_merc(area, z)
+    }
+
+    /// Bounds in Web Mercator metres.
+    fn tile_bounds(&self, tile: Tile) -> Bounds {
+        self.merc_bounds(tile)
     }
 }
 

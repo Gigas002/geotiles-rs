@@ -9,7 +9,6 @@ description = "A Rust library for generating map tiles from GeoTIFF sources."
 license = "AGPL-3.0-only"
 authors = ["Gigas002 <gigas002@pm.me>"]
 repository = "https://github.com/Gigas002/geotiles-rs"
-homepage = "https://github.com/Gigas002/geotiles-rs"
 
 [workspace.dependencies]
 tiff = { version = "0.11", features = ["zstd"] }

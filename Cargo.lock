@@ -659,7 +659,6 @@ dependencies = [
  "anyhow",
  "clap",
  "libgeotiles",
- "rayon",
  "serde",
  "toml",
  "tracing",

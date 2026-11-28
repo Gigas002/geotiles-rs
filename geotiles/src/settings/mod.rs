@@ -12,8 +12,8 @@
 use std::path::PathBuf;
 
 use libgeotiles::{
-    AvifOptions, EncodeOptions, Format, JpegOptions, JxlOptions, PngCompression, PngFilter,
-    PngOptions, ResampleBackend, WebPOptions,
+    AvifOptions, Crs, EncodeOptions, Format, JpegOptions, JxlOptions, PngCompression, PngFilter,
+    PngOptions, WebPOptions,
 };
 
 use crate::cli::{Cli, ZoomRange};
@@ -21,13 +21,13 @@ use crate::config::Config;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-/// Target coordinate reference system for the output tile grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Crs {
-    /// EPSG:4326 — geographic (longitude / latitude).
-    Geographic,
-    /// EPSG:3857 — Web Mercator.
-    Mercator,
+/// Tile resample backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Backend {
+    #[default]
+    Cpu,
+    #[cfg(feature = "gpu")]
+    Gpu,
 }
 
 /// All resolved run parameters after merging CLI flags and config file values.
@@ -36,7 +36,7 @@ pub enum Crs {
 /// receives only `&Settings` — never `&Cli` or `&Config`.
 #[derive(Debug)]
 pub struct Settings {
-    /// Path to the source GeoTIFF (or any GDAL-readable raster).
+    /// Path to the source GeoTIFF (8-bit, north-up, already in the tile CRS).
     pub input: PathBuf,
     /// Path to the output tile directory.  Created if it does not exist.
     pub output: PathBuf,
@@ -48,15 +48,9 @@ pub struct Settings {
     pub format: Format,
     /// Use TMS (south-origin) Y-axis ordering instead of XYZ.
     pub tms: bool,
-    /// Target coordinate reference system.
-    pub crs: Crs,
+    /// Tile grid CRS; `None` = take it from the raster's GeoKeys.
+    pub crs: Option<Crs>,
     /// Optional output band count override (1–4).  `None` = inherit source band count.
-    // Accessed only inside feature-gated pipeline code; suppress the dead-code lint
-    // when neither CRS feature is compiled in.
-    #[cfg_attr(
-        not(any(feature = "geographic", feature = "mercator")),
-        allow(dead_code)
-    )]
     pub bands: Option<usize>,
     /// Tile width and height in pixels.
     pub tile_size: u32,
@@ -65,16 +59,8 @@ pub struct Settings {
     /// Maximum source-pixel rows held in RAM at once (chunked I/O budget).
     pub chunk_size: usize,
     /// Tile resample backend (CPU or GPU).
-    #[cfg_attr(
-        not(any(feature = "geographic", feature = "mercator")),
-        allow(dead_code)
-    )]
-    pub backend: ResampleBackend,
+    pub backend: Backend,
     /// Per-format encoder options derived from the config file.
-    #[cfg_attr(
-        not(any(feature = "geographic", feature = "mercator")),
-        allow(dead_code)
-    )]
     pub encode_opts: EncodeOptions,
 }
 
@@ -95,18 +81,24 @@ impl Settings {
 
         let tms = cli.tms.or(config.tms).unwrap_or(false);
 
-        let crs = parse_crs(
-            cli.crs
-                .as_deref()
-                .or(config.crs.as_deref())
-                .unwrap_or("geographic"),
-        )?;
+        let crs = cli
+            .crs
+            .as_deref()
+            .or(config.crs.as_deref())
+            .map(parse_crs)
+            .transpose()?;
 
         let bands = cli.bands.or(config.bands);
         let tile_size = cli.tilesize.or(config.tilesize).unwrap_or(256);
         let tmr = cli.tmr.or(config.tmr).unwrap_or(false);
         let chunk_size = cli.chunk_size.or(config.chunk_size).unwrap_or(512);
-        let backend = parse_backend(cli.backend.as_deref().unwrap_or("cpu"))?;
+        let backend = cli
+            .backend
+            .as_deref()
+            .or(config.backend.as_deref())
+            .map(parse_backend)
+            .transpose()?
+            .unwrap_or_default();
         let encode_opts = build_encode_opts(config);
 
         Ok(Self {
@@ -127,15 +119,15 @@ impl Settings {
     }
 }
 
-/// Parse a `--backend` string into a [`ResampleBackend`].
+/// Parse a `--backend` string.
 ///
 /// Returns an error for `"gpu"` when the crate was not built with the `gpu` feature, so the
 /// failure is reported at startup rather than as a confusing later error.
-fn parse_backend(s: &str) -> anyhow::Result<ResampleBackend> {
+fn parse_backend(s: &str) -> anyhow::Result<Backend> {
     match s.trim().to_lowercase().as_str() {
-        "cpu" => Ok(ResampleBackend::Cpu),
+        "cpu" => Ok(Backend::Cpu),
         #[cfg(feature = "gpu")]
-        "gpu" => Ok(ResampleBackend::Gpu),
+        "gpu" => Ok(Backend::Gpu),
         #[cfg(not(feature = "gpu"))]
         "gpu" => anyhow::bail!(
             "backend 'gpu' requested but this binary was not built with the 'gpu' feature"
@@ -165,12 +157,12 @@ fn parse_format(s: &str) -> anyhow::Result<Format> {
 /// Parse a CRS string into a [`Crs`] variant.
 ///
 /// Accepted aliases:
-/// - `geographic`, `geodetic`, `4326`, `epsg:4326` → [`Crs::Geographic`]
-/// - `mercator`, `webmercator`, `3857`, `epsg:3857` → [`Crs::Mercator`]
+/// - `geographic`, `geodetic`, `4326`, `epsg:4326` → [`Crs::Wgs84`]
+/// - `mercator`, `webmercator`, `3857`, `epsg:3857` → [`Crs::WebMercator`]
 fn parse_crs(s: &str) -> anyhow::Result<Crs> {
     match s.trim().to_lowercase().as_str() {
-        "geographic" | "geodetic" | "4326" | "epsg:4326" => Ok(Crs::Geographic),
-        "mercator" | "webmercator" | "3857" | "epsg:3857" => Ok(Crs::Mercator),
+        "geographic" | "geodetic" | "4326" | "epsg:4326" => Ok(Crs::Wgs84),
+        "mercator" | "webmercator" | "3857" | "epsg:3857" => Ok(Crs::WebMercator),
         other => anyhow::bail!(
             "unknown CRS '{}'; supported: geographic (EPSG:4326), mercator (EPSG:3857)",
             other

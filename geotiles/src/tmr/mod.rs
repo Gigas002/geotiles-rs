@@ -5,13 +5,18 @@
 
 use std::path::Path;
 
-use libgeotiles::coords::Bounds;
+use libgeotiles::{Bounds, Crs};
 
-use crate::settings::{Crs, Settings};
+use crate::settings::Settings;
 
 /// Write `tilemapresource.xml` into `output_dir`.
-pub fn write(output_dir: &Path, settings: &Settings, ds_bounds: Bounds) -> anyhow::Result<()> {
-    let xml = render(settings, ds_bounds);
+pub fn write(
+    output_dir: &Path,
+    settings: &Settings,
+    crs: Crs,
+    ds_bounds: Bounds,
+) -> anyhow::Result<()> {
+    let xml = render(settings, crs, ds_bounds);
     let path = output_dir.join("tilemapresource.xml");
     std::fs::write(&path, xml)?;
     tracing::info!(path = %path.display(), "tilemapresource.xml written");
@@ -19,10 +24,10 @@ pub fn write(output_dir: &Path, settings: &Settings, ds_bounds: Bounds) -> anyho
 }
 
 /// Render the XML document as a `String`.
-pub(crate) fn render(settings: &Settings, bounds: Bounds) -> String {
-    let (srs, profile, origin_x, origin_y) = match settings.crs {
-        Crs::Geographic => ("EPSG:4326", "global-geodetic", -180.0_f64, -90.0_f64),
-        Crs::Mercator => (
+pub(crate) fn render(settings: &Settings, crs: Crs, bounds: Bounds) -> String {
+    let (srs, profile, origin_x, origin_y) = match crs {
+        Crs::Wgs84 => ("EPSG:4326", "global-geodetic", -180.0_f64, -90.0_f64),
+        Crs::WebMercator => (
             "EPSG:3857",
             "global-mercator",
             -20_037_508.342_789_244_f64,
@@ -30,13 +35,13 @@ pub(crate) fn render(settings: &Settings, bounds: Bounds) -> String {
         ),
     };
 
-    let mime = mime_type(settings.format);
+    let mime = settings.format.mime_type();
     let ext = settings.format.extension();
     let ts = settings.tile_size;
 
     let mut tile_sets = String::new();
     for z in settings.min_zoom..=settings.max_zoom {
-        let units_per_pixel = units_per_pixel(settings.crs, z, settings.tile_size);
+        let units_per_pixel = units_per_pixel(crs, z, settings.tile_size);
         tile_sets.push_str(&format!(
             "    <TileSet href=\"{z}\" units-per-pixel=\"{units_per_pixel:.10}\" order=\"{z}\"/>\n"
         ));
@@ -61,31 +66,15 @@ pub(crate) fn render(settings: &Settings, bounds: Bounds) -> String {
     )
 }
 
-/// Half the Web Mercator equatorial extent in metres (π × 6 378 137).
-///
-/// Defined locally so `tmr` does not depend on the `mercator` Cargo feature.
-const MERC_ORIGIN_SHIFT: f64 = std::f64::consts::PI * 6_378_137.0;
-
 /// Ground resolution in the native CRS units per pixel at zoom `z`.
 pub(crate) fn units_per_pixel(crs: Crs, z: u8, tile_size: u32) -> f64 {
     let full_extent = match crs {
         // 180° / (tile_size × 2^z) for the geodetic profile (2× wider grid).
-        Crs::Geographic => 180.0_f64,
+        Crs::Wgs84 => 180.0_f64,
         // 2 × half-circumference for Web Mercator.
-        Crs::Mercator => MERC_ORIGIN_SHIFT * 2.0,
+        Crs::WebMercator => libgeotiles::coords::mercator::ORIGIN_SHIFT * 2.0,
     };
     full_extent / (tile_size as f64 * (1u64 << z) as f64)
-}
-
-pub(crate) fn mime_type(format: libgeotiles::Format) -> &'static str {
-    use libgeotiles::Format;
-    match format {
-        Format::Png => "image/png",
-        Format::Jpeg => "image/jpeg",
-        Format::WebP => "image/webp",
-        Format::Avif => "image/avif",
-        Format::Jxl => "image/jxl",
-    }
 }
 
 #[cfg(test)]

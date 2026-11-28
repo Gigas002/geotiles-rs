@@ -6,14 +6,11 @@ description.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 
 # Each feature mirrors the same-named feature in libgeotiles so the binary
 # can be built with the same --features flags as the library.
 [features]
-default = ["geographic", "mercator", "png"]
-geographic = ["libgeotiles/geographic"]
-mercator = ["libgeotiles/mercator"]
+default = ["png"]
 png = ["libgeotiles/png"]
 jpeg = ["libgeotiles/jpeg"]
 webp = ["libgeotiles/webp"]
@@ -22,12 +19,11 @@ jxl = ["libgeotiles/jxl"]
 gpu = ["libgeotiles/gpu"]
 
 [dependencies]
-libgeotiles = { path = "../libgeotiles" }
+libgeotiles = { path = "../libgeotiles", default-features = false, features = ["geotiff"] }
 clap = { version = "4", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
-rayon = "1"
 anyhow = "1"
 tracing = { workspace = true }
 

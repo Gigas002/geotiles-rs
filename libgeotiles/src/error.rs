@@ -2,6 +2,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[cfg(feature = "geotiff")]
     #[error("TIFF error: {0}")]
     Tiff(#[from] tiff::TiffError),
 
@@ -21,11 +22,7 @@ pub enum Error {
     #[error("encode error: {0}")]
     Encode(String),
 
-    /// The requested tile does not overlap the dataset extent.
-    #[error("tile ({x}, {y}, z={z}) does not overlap the dataset")]
-    OutOfBounds { x: u32, y: u32, z: u8 },
-
-    /// Band count not supported by the current pipeline (1, 3, or 4 bands expected).
+    /// Band count outside 1–4 (L, LA, RGB, RGBA).
     #[error("unsupported band count: {0}")]
     BadBandCount(usize),
 
@@ -38,7 +35,16 @@ pub enum Error {
     #[error("no georeferencing found in TIFF (missing GeoTIFF model tags)")]
     MissingGeoreferencing,
 
-    /// A TIFF layout or sample format this pipeline does not (yet) support.
-    #[error("unsupported TIFF layout: {0}")]
+    /// Input this library does not take as-is (layout, sample type, georeferencing).
+    /// Pre-process it with a GeoTIFF-capable tool first.
+    #[error("unsupported input: {0}")]
     Unsupported(String),
+
+    /// The raster declares a CRS other than the tile grid's.
+    #[error("raster is in EPSG:{raster} but the tile grid is {grid}; reproject the input first")]
+    CrsMismatch { raster: u32, grid: crate::geo::Crs },
+
+    /// Tiler options out of range.
+    #[error("invalid options: {0}")]
+    InvalidOptions(String),
 }
